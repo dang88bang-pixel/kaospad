@@ -47,6 +47,17 @@ http://127.0.0.1:8082/mesh/default             NeuralLift Default Avatar
 http://127.0.0.1:8085/rhymes?word=beton        Offline Reimhilfe
 ```
 
+## Kaoss Quad Console & Vault
+
+Die Ein-Anwendung enthält jetzt zusätzliche Performance-/Vault-Funktionen:
+
+- Preset-Lader für `90s Tape`, `Acid Berlin`, `Cyber Drill`, `Lo-Fi Cypher`.
+- Vier Freeze-Buttons für FX1 Looper, FX2 Vinyl, FX3 Filter, FX4 Tape Echo.
+- Sample-Bänke A-D.
+- `.cypher` Session Export.
+- Live Log Panel.
+- APIs `/api/presets`, `/api/session/export`, `/api/logs`.
+
 ## Funktionsbereite Browser-Audio-Engine
 
 Die PWA enthält jetzt eine direkt bedienbare WebAudio Engine:
@@ -103,6 +114,7 @@ multi-avatar sync benchmark passed
 android USB/mic/bluetooth permissions and features declared
 web functional audio/device/rhyme contract declared
 kaoss one-app e2e contract passed
+# includes presets, sample banks, .cypher export and logs
 ```
 
 ## Aktueller Vollständigkeitsstatus

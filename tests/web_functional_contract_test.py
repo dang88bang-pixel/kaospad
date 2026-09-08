@@ -23,6 +23,12 @@ REQUIRED_IDS = {
     "input-select",
     "permission-check",
     "portview-auto",
+    "preset-select",
+    "apply-preset",
+    "export-session",
+    "vault-state",
+    "bank-grid",
+    "live-log",
 }
 REQUIRED_ENGINE_TOKENS = {
     "class WebAudioCypherEngine",
@@ -41,6 +47,9 @@ REQUIRED_APP_TOKENS = {
     "lookupRhymes",
     "applyXY",
     "BRIDGE: LOCALHOST IPC LIVE",
+    "loadPresets",
+    "exportSession",
+    "freezeState",
 }
 
 

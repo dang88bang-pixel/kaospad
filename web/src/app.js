@@ -260,3 +260,107 @@ async function lookupRhymes() {
 
 document.querySelector('#lookup-rhyme').addEventListener('click', lookupRhymes);
 populateBrowserInputs();
+
+
+const presetSelect = document.querySelector('#preset-select');
+const vaultState = document.querySelector('#vault-state');
+const bankGrid = document.querySelector('#bank-grid');
+const liveLog = document.querySelector('#live-log');
+const freezeState = [false, false, false, false];
+let presetCache = null;
+
+function fallbackPresets() {
+  return {
+    presets: [
+      { id: '90s_tape', name: '90s Tape Reel', bpm: 92.4, drive: 0.38, filter: 0.62, delay: 0.28 },
+      { id: 'acid_berlin', name: 'Acid Berlin', bpm: 128, drive: 0.44, filter: 0.82, delay: 0.18 },
+      { id: 'cyber_drill', name: 'Cyber Drill', bpm: 142, drive: 0.52, filter: 0.46, delay: 0.12 },
+      { id: 'lofi_cypher', name: 'Lo-Fi Cypher', bpm: 84, drive: 0.24, filter: 0.36, delay: 0.42 },
+    ],
+    sample_banks: [
+      { bank: 'A', label: 'Kick / 808', slots: ['SUB DROP', 'BOOM', 'TAPE KICK', 'MOUTH 808'] },
+      { bank: 'B', label: 'Snare / Clap', slots: ['MPC SNARE', 'CLAP', 'RIM', 'NOISE SNAP'] },
+      { bank: 'C', label: 'Hat / Perc', slots: ['TS HAT', 'SHAKER', 'ROLL 16', 'ROLL 32'] },
+      { bank: 'D', label: 'Vocal FX', slots: ['DUB', 'FORMANT', 'FREEZE', 'REVERSE'] },
+    ],
+  };
+}
+
+async function loadPresets() {
+  if (presetCache) return presetCache;
+  try {
+    const response = await fetch('/api/presets', { cache: 'no-store' });
+    if (!response.ok) throw new Error('preset fallback');
+    presetCache = await response.json();
+  } catch {
+    presetCache = { ok: true, ...fallbackPresets() };
+  }
+  presetSelect.innerHTML = presetCache.presets
+    .map((preset) => `<option value="${preset.id}">${preset.name} // ${preset.bpm} BPM</option>`)
+    .join('');
+  bankGrid.innerHTML = presetCache.sample_banks
+    .map((bank) => `<article class="bank-card"><span>BANK ${bank.bank}</span><strong>${bank.label}</strong><small>${bank.slots.join(' · ')}</small></article>`)
+    .join('');
+  return presetCache;
+}
+
+async function applyPreset() {
+  const data = await loadPresets();
+  const preset = data.presets.find((item) => item.id === presetSelect.value) || data.presets[0];
+  liveEngine?.applyXY(preset.filter, preset.delay);
+  vaultState.value = `PRESET: ${preset.name.toUpperCase()} // ${preset.bpm} BPM`;
+}
+
+function downloadJson(filename, payload) {
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = Object.assign(document.createElement('a'), { href: url, download: filename });
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportSession() {
+  const input = inputSelect?.value || 'internal_mic';
+  const preset = presetSelect?.value || '90s_tape';
+  try {
+    const response = await fetch(`/api/session/export?preset=${encodeURIComponent(preset)}&input=${encodeURIComponent(input)}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('export fallback');
+    const payload = await response.json();
+    downloadJson(`kaoss-${preset}-${input}.cypher`, payload.session);
+    vaultState.value = `VAULT: EXPORTED ${preset}`;
+  } catch {
+    downloadJson(`kaoss-${preset}-${input}.cypher`, { format: '.cypher', preset, input, offline: true, limiter_dbfs: -3.2, freezeState });
+    vaultState.value = `VAULT: EXPORTED FALLBACK ${preset}`;
+  }
+}
+
+async function loadLogs() {
+  try {
+    const response = await fetch('/api/logs', { cache: 'no-store' });
+    if (!response.ok) throw new Error('log fallback');
+    const payload = await response.json();
+    liveLog.textContent = payload.logs.join('
+');
+  } catch {
+    liveLog.textContent = ['BOOT static preview', 'PORTVIEW safe fallback', 'DSP WebAudio ready', 'VAULT local export ready'].join('
+');
+  }
+}
+
+document.querySelectorAll('.freeze').forEach((button) => {
+  button.addEventListener('click', () => {
+    const module = Number(button.dataset.module);
+    freezeState[module] = !freezeState[module];
+    button.classList.toggle('locked', freezeState[module]);
+    button.querySelector('span').textContent = freezeState[module] ? 'FREEZE ON' : 'FREEZE OFF';
+    vaultState.value = `FX${module + 1}: ${freezeState[module] ? 'FROZEN' : 'LIVE'}`;
+  });
+});
+
+document.querySelector('#apply-preset').addEventListener('click', applyPreset);
+document.querySelector('#export-session').addEventListener('click', exportSession);
+loadPresets().then(applyPreset);
+loadLogs();
+setInterval(loadLogs, 6000);

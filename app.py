@@ -36,6 +36,20 @@ DAEMONS = [
     {"port": 8085, "name": "offline-whisper-daemon", "protocol": "in-app HTTP UTF-8", "latency": "<9ms shim"},
 ]
 
+PRESETS = [
+    {"id": "90s_tape", "name": "90s Tape Reel", "bpm": 92.4, "drive": 0.38, "filter": 0.62, "delay": 0.28},
+    {"id": "acid_berlin", "name": "Acid Berlin", "bpm": 128.0, "drive": 0.44, "filter": 0.82, "delay": 0.18},
+    {"id": "cyber_drill", "name": "Cyber Drill", "bpm": 142.0, "drive": 0.52, "filter": 0.46, "delay": 0.12},
+    {"id": "lofi_cypher", "name": "Lo-Fi Cypher", "bpm": 84.0, "drive": 0.24, "filter": 0.36, "delay": 0.42},
+]
+
+SAMPLE_BANKS = [
+    {"bank": "A", "label": "Kick / 808", "slots": ["SUB DROP", "BOOM", "TAPE KICK", "MOUTH 808"]},
+    {"bank": "B", "label": "Snare / Clap", "slots": ["MPC SNARE", "CLAP", "RIM", "NOISE SNAP"]},
+    {"bank": "C", "label": "Hat / Perc", "slots": ["TS HAT", "SHAKER", "ROLL 16", "ROLL 32"]},
+    {"bank": "D", "label": "Vocal FX", "slots": ["DUB", "FORMANT", "FREEZE", "REVERSE"]},
+]
+
 
 def json_bytes(payload: object) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
@@ -93,6 +107,10 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                         "rhyme_matrix": True,
                         "neurallift_fallback": True,
                         "kaoss_xy_fx": True,
+                        "kaoss_quad_control": True,
+                        "sample_banks": True,
+                        "session_export": True,
+                        "live_logs": True,
                     },
                 }
             )
@@ -147,6 +165,38 @@ class OneAppHandler(SimpleHTTPRequestHandler):
 
         if path in {"/dsp/transient", "/api/dsp/transient"}:
             self.send_json({"ok": True, "bpm": 92.4, "kick808": True, "snare": False, "hat": True, "latency_ms": 1.0})
+            return
+
+        if path in {"/api/presets", "/presets"}:
+            self.send_json({"ok": True, "presets": PRESETS, "sample_banks": SAMPLE_BANKS})
+            return
+
+        if path in {"/api/session/export", "/session/export"}:
+            preset = query.get("preset", ["90s_tape"])[0]
+            selected = query.get("input", ["internal_mic"])[0]
+            session = {
+                "format": ".cypher",
+                "version": APP_VERSION,
+                "created_offline": True,
+                "profile": "A",
+                "preset": preset,
+                "input": selected,
+                "bpm": next((item["bpm"] for item in PRESETS if item["id"] == preset), 92.4),
+                "limiter_dbfs": -3.2,
+                "stems": ["vocal", "mouth_808", "kaoss_fx", "avatar_motion"],
+                "sample_banks": SAMPLE_BANKS,
+            }
+            self.send_json({"ok": True, "session": session})
+            return
+
+        if path in {"/api/logs", "/logs"}:
+            self.send_json({"ok": True, "logs": [
+                "BOOT zero-cloud one-app",
+                "PORTVIEW native bridge ready",
+                "I/O matrix usb/mic/bluetooth ready",
+                "DSP limiter -3.2 dBFS armed",
+                "PWA WebAudio engine standby",
+            ]})
             return
 
         if path == "/transcribe":

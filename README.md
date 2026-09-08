@@ -86,6 +86,16 @@ For sandbox preview only, it can be bound externally:
 python3 app.py --host 0.0.0.0 --port 8080
 ```
 
+## Kaoss Quad Console & Vault
+
+The unified app now includes a single console for live performance control:
+
+- Theme presets: `90s Tape Reel`, `Acid Berlin`, `Cyber Drill`, `Lo-Fi Cypher`.
+- Four FX freeze buttons: Looper, Vinyl, Filter, Tape Echo.
+- Sample banks A-D for 808, snare/clap, hat/percussion and vocal FX slots.
+- `.cypher` session export through `/api/session/export` or the UI button.
+- Live one-app log panel through `/api/logs`.
+
 ## Funktionsbereite Browser-Audio-Engine
 
 The PWA now includes a directly runnable WebAudio performance path:

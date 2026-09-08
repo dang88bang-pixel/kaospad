@@ -56,6 +56,17 @@ def main() -> int:
         transient = get_json("http://127.0.0.1:8090/dsp/transient")
         assert transient["kick808"] is True and transient["latency_ms"] <= 1.2
 
+        presets = get_json("http://127.0.0.1:8090/api/presets")
+        assert {item["id"] for item in presets["presets"]} >= {"90s_tape", "acid_berlin", "cyber_drill", "lofi_cypher"}
+        assert len(presets["sample_banks"]) == 4
+
+        session = get_json("http://127.0.0.1:8090/api/session/export?preset=acid_berlin&input=usb_c_audio")
+        assert session["session"]["format"] == ".cypher"
+        assert session["session"]["preset"] == "acid_berlin"
+
+        logs = get_json("http://127.0.0.1:8090/api/logs")
+        assert any("DSP limiter" in line for line in logs["logs"])
+
         print("kaoss one-app e2e contract passed")
         return 0
     finally:

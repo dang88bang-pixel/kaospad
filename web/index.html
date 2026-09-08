@@ -55,6 +55,34 @@
       <div class="permission-grid" id="permission-grid"></div>
     </section>
 
+    <section class="kaoss-console" aria-labelledby="console-title">
+      <div>
+        <p class="eyebrow">Kaoss Quad Console // Presets · Freeze · Vault</p>
+        <h2 id="console-title">Vier FX-Engines & Session Export</h2>
+        <p>Eine Bedienfläche für Live-Presets, vier Freeze-Module, Sample-Bänke A-D, Logs und lokalen `.cypher` Export.</p>
+      </div>
+      <div class="console-controls">
+        <label for="preset-select">Theme Preset</label>
+        <select id="preset-select">
+          <option value="90s_tape">90s Tape Reel</option>
+          <option value="acid_berlin">Acid Berlin</option>
+          <option value="cyber_drill">Cyber Drill</option>
+          <option value="lofi_cypher">Lo-Fi Cypher</option>
+        </select>
+        <button id="apply-preset" type="button">PRESET LADEN</button>
+        <button id="export-session" type="button">.CYPHER EXPORT</button>
+        <output id="vault-state">VAULT: READY</output>
+      </div>
+      <div class="fx-grid" id="fx-grid">
+        <button class="freeze" data-module="0" type="button">FX1 LOOPER<br><span>FREEZE OFF</span></button>
+        <button class="freeze" data-module="1" type="button">FX2 VINYL<br><span>FREEZE OFF</span></button>
+        <button class="freeze" data-module="2" type="button">FX3 FILTER<br><span>FREEZE OFF</span></button>
+        <button class="freeze" data-module="3" type="button">FX4 TAPE ECHO<br><span>FREEZE OFF</span></button>
+      </div>
+      <div class="bank-grid" id="bank-grid"></div>
+      <pre class="live-log" id="live-log">BOOT // waiting for one-app logs</pre>
+    </section>
+
     <section class="live-engine" aria-labelledby="engine-title">
       <div>
         <p class="eyebrow">Funktionsbereit // Browser Audio Engine</p>
