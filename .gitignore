@@ -1,0 +1,9 @@
+build/
+dist/
+target/
+node_modules/
+*.log
+.DS_Store
+
+__pycache__/
+*.py[cod]

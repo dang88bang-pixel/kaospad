@@ -1,0 +1,26 @@
+name: Release Publisher
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish
+        required: true
+        default: v5.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  package-web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y zip
+      - run: ./scripts/package_web_pwa.sh
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          files: dist/KaossBeatboxStudio-WebAssembly-Offline.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

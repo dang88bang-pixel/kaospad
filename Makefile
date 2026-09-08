@@ -1,0 +1,42 @@
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions run-localhost-ipc clean release-bundle
+
+scaffold-all-platforms:
+	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
+
+build:
+	@if command -v cmake >/dev/null 2>&1; then \
+		cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_UNIT_TESTS=ON && \
+		cmake --build build --config Release; \
+	else \
+		mkdir -p build && \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/audio_latency_e2e_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp -o build/audio_latency_e2e_test && \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/brickwall_limiter_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp -o build/brickwall_limiter_test && \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/transient_splitter_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp -o build/transient_splitter_test; \
+	fi
+
+test: test-native-dsp-latency test-offline-daemons test-web test-permissions
+
+test-native-dsp-latency: build
+	./build/audio_latency_e2e_test --max-latency=1.2ms
+	./build/brickwall_limiter_test --threshold=-3.2dBFS
+	./build/transient_splitter_test
+
+test-offline-daemons:
+	python3 tests/offline_ipc_socket_test.py
+
+test-web:
+	node tests/multi_avatar_sync_test.js
+
+test-permissions:
+	python3 tests/permission_manifest_test.py
+	python3 engines/device_matrix.py >/tmp/kaoss-device-matrix.json
+
+run-localhost-ipc:
+	python3 engines/localhost_ipc_suite.py
+
+release-bundle: test
+	python3 engines/neurallift_360/scripts/download_weights.py --target=dist/offline-models
+	./scripts/build_appimage.sh
+
+clean:
+	rm -rf build dist

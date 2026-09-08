@@ -1,0 +1,9 @@
+FROM debian:bookworm-slim
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake ninja-build python3 nodejs npm zip ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+COPY . .
+RUN make test-native-dsp-latency && make test-offline-daemons && make test-web
+CMD ["make", "release-bundle"]

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111318" />
+  <title>Korg Kaoss AI Beatbox Studio</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">Berlin Underground 1998–2026 // Offline PWA</p>
+      <h1>Korg Kaoss Pad & AI Beatbox Studio</h1>
+      <p>One-touch Cypher, Mund-Bass zu 808, Quad-FX und NeuralLift-360 Avatar Stage – alles localhost-first, ohne Cloud.</p>
+    </section>
+    <section class="grid">
+      <article><span>● USB-C 96K</span><strong>1.2 ms LOCKED</strong><small>-3.2 dBFS SAFE</small></article>
+      <article><span>DRÜCK & LABER</span><strong>Live Vocal</strong><small>Whisper offline + Reim-Matrix</small></article>
+      <article><span>MUND-BASS</span><strong>808 Transmuter</strong><small>20–90 Hz transient split</small></article>
+      <article><span>KAOSS QUAD</span><strong>4x Freeze FX</strong><small>Looper, Vinyl, Filter, Tape Echo</small></article>
+    </section>
+
+    <section class="native-bridge" aria-labelledby="portview-title">
+      <div>
+        <p class="eyebrow">Native Bridge PortView // AUTO</p>
+        <h2 id="portview-title">Regel-Matrix via Native Bridge</h2>
+        <p>Die Ansicht schaltet automatisch auf die native Bridge, sobald sie vom Android/Desktop-Host injiziert wird. Im Browser bleibt sie zero-cloud als sichere Localhost-Simulation sichtbar.</p>
+      </div>
+      <div class="bridge-actions">
+        <button id="portview-auto" type="button">PORTVIEW AUTO REGELN</button>
+        <output id="bridge-mode">BRIDGE: AUTO-SCAN</output>
+      </div>
+      <div class="port-grid" id="port-grid"></div>
+    </section>
+
+    <section class="io-matrix" aria-labelledby="io-title">
+      <div>
+        <p class="eyebrow">Plug & Play Audio I/O // USB · Mic · Bluetooth</p>
+        <h2 id="io-title">Eingang wählen & Berechtigungen prüfen</h2>
+        <p>Auto-Adaption für USB-C Interface, internes Mikrofon oder Bluetooth-Client. Status, Latenz, Route und Berechtigungen werden direkt in der Ansicht angezeigt.</p>
+      </div>
+      <div class="io-controls">
+        <label for="input-select">Input Source</label>
+        <select id="input-select">
+          <option value="usb_c_audio">USB-C Audio Interface</option>
+          <option value="internal_mic" selected>Internes Mikrofon</option>
+          <option value="bluetooth_client">Bluetooth Client / BLE Mic</option>
+        </select>
+        <button id="permission-check" type="button">BERECHTIGUNGEN PRÜFEN</button>
+        <output id="permission-mode">PERMISSION: AUTO</output>
+      </div>
+      <div class="device-grid" id="device-grid"></div>
+      <div class="permission-grid" id="permission-grid"></div>
+    </section>
+
+    <section class="pad" aria-label="Kaoss XY Touch Pad"><div class="orb"></div></section>
+    <section class="daemon" id="daemon"></section>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
