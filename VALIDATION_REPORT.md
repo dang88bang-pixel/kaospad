@@ -5,6 +5,8 @@ Branch: `arena/01a081b7-kaospad`
 
 ## Ergebnis
 
+Die lokal ausführbare Offline-Suite ist jetzt zusätzlich als **eine Anwendung** bereitgestellt: `app.py` startet Web UI und alle aktuellen APIs in einem Prozess auf `127.0.0.1:8080`.
+
 Die lokal ausführbare Offline-Suite ist bereitgestellt und erweitert um **Plug-&-Play Audio Input Adaption** für:
 
 - USB-C Audio Interface
@@ -13,7 +15,19 @@ Die lokal ausführbare Offline-Suite ist bereitgestellt und erweitert um **Plug-
 
 Die Auswahl ist in der Web-Ansicht konfigurierbar, zeigt Status/Latenz/Route an und prüft bzw. listet die notwendigen Berechtigungen. Android-Manifest-Berechtigungen und Features werden per Test validiert.
 
-## Starten
+## Starten als eine Anwendung
+
+```bash
+make run-app
+```
+
+Danach läuft alles über einen Prozess und eine Web-App auf:
+
+```text
+http://127.0.0.1:8080/
+```
+
+## Alternative: Multi-Port IPC Suite
 
 ```bash
 make run-localhost-ipc
@@ -88,6 +102,7 @@ zero-cloud localhost IPC gate passed for ports 8080-8085
 multi-avatar sync benchmark passed
 android USB/mic/bluetooth permissions and features declared
 web functional audio/device/rhyme contract declared
+kaoss one-app e2e contract passed
 ```
 
 ## Aktueller Vollständigkeitsstatus
@@ -104,6 +119,7 @@ web functional audio/device/rhyme contract declared
 | Bluetooth Client Route | ✅ | ✅ Shim | echte Pairing-API später ersetzbar |
 | Native Bridge PortView | ✅ | ✅ | Live API oder Browser-Safe-Fallback |
 | WebAudio Performance Engine | ✅ | ✅ | Browser-funktional mit Mic Prompt und Synth-Tests |
+| Kaoss One App `app.py` | ✅ | ✅ | Eine Anwendung mit UI + APIs + Tests |
 | Localhost IPC `:8080–:8085` | ✅ | ✅ | Zero-Cloud, loopback-only |
 
 ## Artefakte

@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract run-localhost-ipc clean release-bundle
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app run-app run-localhost-ipc clean release-bundle
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -14,7 +14,7 @@ build:
 		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/transient_splitter_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp -o build/transient_splitter_test; \
 	fi
 
-test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract
+test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
@@ -33,6 +33,12 @@ test-permissions:
 
 test-web-contract:
 	python3 tests/web_functional_contract_test.py
+
+test-one-app:
+	python3 tests/one_app_e2e_test.py
+
+run-app:
+	python3 app.py
 
 run-localhost-ipc:
 	python3 engines/localhost_ipc_suite.py

@@ -63,6 +63,29 @@ make release-bundle
 | 8084 | dsp-transient-bridge | localhost only |
 | 8085 | offline-whisper-daemon | localhost only |
 
+## Eine Anwendung starten
+
+The complete currently executable suite is available as a single local application:
+
+```bash
+make run-app
+# opens http://127.0.0.1:8080/
+```
+
+`app.py` serves the PWA and all local APIs from one process:
+
+- `/health` and `/api/status`
+- `/native-bridge/ports`
+- `/devices/status`, `/devices/select`, `/permissions/check`
+- `/mesh/default`, `/avatar/frame`, `/dsp/transient`
+- `/transcribe`, `/rhymes`
+
+For sandbox preview only, it can be bound externally:
+
+```bash
+python3 app.py --host 0.0.0.0 --port 8080
+```
+
 ## Funktionsbereite Browser-Audio-Engine
 
 The PWA now includes a directly runnable WebAudio performance path:

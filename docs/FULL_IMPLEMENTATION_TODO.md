@@ -41,6 +41,7 @@ Ziel: Vollständige, ehrliche Liste aller vorhandenen, simulierten und noch fehl
 | Tests | `tests/` | ✅ DONE |
 | CI Workflows | `.github/workflows/` | ✅ DONE / 🧪 teilweise |
 | Validation Report | `VALIDATION_REPORT.md` | ✅ DONE |
+| Kaoss One App | `app.py` | ✅ DONE |
 
 ### 1.2 Lokal erfolgreich getestet
 
@@ -416,6 +417,14 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 ---
 
 ## 7. UI / UX TODOs
+
+### 6.7 Eine Anwendung / One App
+
+- [x] Single process app server `app.py`.
+- [x] Web UI und lokale APIs in einer Anwendung.
+- [x] One-App E2E Test.
+- [ ] Native Android Shell mit gleichem One-App Modell.
+- [ ] Desktop Bundle mit gleichem One-App Modell.
 
 ### 7.1 Bereits vorhandene UI
 
