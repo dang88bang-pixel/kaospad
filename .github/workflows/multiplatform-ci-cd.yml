@@ -1,0 +1,146 @@
+name: Kaoss & Neural Cypher Multi-Platform Release Engine
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  dsp-audio-verification:
+    name: DSP Latency & Brickwall Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+      - name: Install Audio DSP Toolchains
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build
+      - name: Compile Native C++ Audio Engines
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_UNIT_TESTS=ON
+          cmake --build build
+      - name: Run Latency & Limiter Verification Tests
+        run: |
+          ./build/audio_latency_e2e_test --max-latency=1.2ms
+          ./build/brickwall_limiter_test --threshold=-3.2dBFS
+          ./build/transient_splitter_test
+
+  build-android:
+    needs: dsp-audio-verification
+    name: Build Android APK/AAB (Offline NDK Scaffold)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Preload Offline ML Model Manifests
+        run: python3 ./engines/neurallift_360/scripts/download_weights.py --target=android/app/src/main/assets/models/
+      - name: Build Signed Production APK & Universal Bundle
+        run: |
+          cd android
+          chmod +x ./gradlew
+          ./gradlew assembleRelease bundleRelease
+      - name: Upload Android Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-production-build
+          path: |
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/bundle/release/*.aab
+
+  build-linux:
+    needs: dsp-audio-verification
+    name: Build Linux AppImage & Debian Package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust & Dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential libasound2-dev
+      - name: Build Linux Desktop Executable
+        run: |
+          cd desktop
+          cargo build --release
+          cd ..
+          ./scripts/build_appimage.sh
+      - name: Upload Linux Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-appimage
+          path: dist/*.AppImage
+
+  build-macos:
+    needs: dsp-audio-verification
+    name: Build macOS DMG (Universal Scaffold)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Rust & Universal Targets
+        run: |
+          rustup target add aarch64-apple-darwin
+          rustup target add x86_64-apple-darwin
+      - name: Compile macOS Binary & DMG Package
+        run: |
+          cd desktop
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          cd ..
+          ./scripts/create_universal_dmg.sh
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-universal-dmg
+          path: dist/*.dmg
+
+  build-windows:
+    needs: dsp-audio-verification
+    name: Build Windows x64 (ASIO Scaffold)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Toolchains
+        shell: pwsh
+        run: choco install cmake ninja rust -y
+      - name: Build Windows Installer (.msi)
+        shell: pwsh
+        run: |
+          ./scripts/setup_asio_sdk.ps1
+          cd desktop
+          cargo build --release
+          cd ..
+          ./scripts/build_windows_installer.ps1
+      - name: Upload Windows Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-installer
+          path: dist/*.msi
+
+  publish-release:
+    needs: [build-android, build-linux, build-macos, build-windows]
+    name: Publish Production Release to GitHub
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all Compiled Platform Bundles
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      - name: Create Official Multi-Platform GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Korg Kaoss & AI Beatbox Studio - Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: release-artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
