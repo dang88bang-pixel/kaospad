@@ -1,3 +1,4 @@
+import { WebAudioCypherEngine } from './audio-engine.js';
 const DAEMONS = [
   { port: 8080, name: 'master-system-orchestrator', rule: 'Session State + Profile laden', protocol: 'HTTP JSON' },
   { port: 8081, name: 'audio-loopback-daemon', rule: 'What-U-Hear Float32 Pipe', protocol: 'Raw PCM' },
@@ -81,6 +82,7 @@ document.querySelector('#portview-auto').addEventListener('click', refreshPortVi
 refreshPortView();
 setInterval(refreshPortView, 4000);
 
+let liveEngine;
 const pad = document.querySelector('.pad');
 const orb = document.querySelector('.orb');
 pad.addEventListener('pointermove', (event) => {
@@ -90,6 +92,7 @@ pad.addEventListener('pointermove', (event) => {
   const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
   orb.style.left = `${x - 48}px`;
   orb.style.top = `${y - 48}px`;
+  liveEngine?.applyXY(x / rect.width, y / rect.height);
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
@@ -186,3 +189,74 @@ inputSelect.addEventListener('change', async () => {
 document.querySelector('#permission-check').addEventListener('click', refreshDeviceMatrix);
 refreshDeviceMatrix();
 setInterval(refreshDeviceMatrix, 5000);
+
+
+const audioState = document.querySelector('#audio-state');
+const meterFill = document.querySelector('#meter-fill');
+const meterReadout = document.querySelector('#meter-readout');
+const browserDeviceSelect = document.querySelector('#browser-device-select');
+
+liveEngine = new WebAudioCypherEngine({
+  onState: (message) => { audioState.value = message; },
+  onLevel: ({ peak, dbfs }) => {
+    const pct = Math.max(0, Math.min(100, peak * 100));
+    meterFill.style.width = `${pct}%`;
+    meterReadout.value = `PEAK: ${dbfs.toFixed(1)} dBFS`;
+  },
+});
+
+async function populateBrowserInputs() {
+  try {
+    const inputs = await liveEngine.enumerateAudioInputs();
+    const options = ['<option value="">Default Browser Input</option>'].concat(
+      inputs.map((device, index) => `<option value="${device.deviceId}">${device.label || `Audio Input ${index + 1}`}</option>`),
+    );
+    browserDeviceSelect.innerHTML = options.join('');
+  } catch {
+    browserDeviceSelect.innerHTML = '<option value="">Default Browser Input</option>';
+  }
+}
+
+document.querySelector('#start-audio').addEventListener('click', async () => {
+  try {
+    await liveEngine.init();
+    await populateBrowserInputs();
+  } catch (error) {
+    audioState.value = `AUDIO ERROR: ${error.message}`;
+  }
+});
+
+document.querySelector('#arm-mic').addEventListener('click', async () => {
+  try {
+    await liveEngine.armMic(browserDeviceSelect.value);
+    await populateBrowserInputs();
+    refreshDeviceMatrix();
+  } catch (error) {
+    audioState.value = `MIC ERROR: ${error.message}`;
+  }
+});
+
+document.querySelector('#trigger-808').addEventListener('click', () => {
+  liveEngine.trigger808().catch((error) => { audioState.value = `808 ERROR: ${error.message}`; });
+});
+
+document.querySelector('#trigger-snare').addEventListener('click', () => {
+  liveEngine.triggerSnare().catch((error) => { audioState.value = `SNARE ERROR: ${error.message}`; });
+});
+
+async function lookupRhymes() {
+  const word = document.querySelector('#rhyme-word').value || 'beton';
+  const out = document.querySelector('#rhyme-output');
+  try {
+    const response = await fetch(`/rhymes?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('offline fallback');
+    const payload = await response.json();
+    out.value = payload.rhymes.join(' · ');
+  } catch {
+    const local = word.toLowerCase().endsWith('on') ? ['BETON', 'SEKTOR', 'DÄMON', 'NEON', 'PHONON'] : ['KAOSS', 'RAUS', 'HAUS', 'APPLAUS'];
+    out.value = local.join(' · ');
+  }
+}
+
+document.querySelector('#lookup-rhyme').addEventListener('click', lookupRhymes);
+populateBrowserInputs();

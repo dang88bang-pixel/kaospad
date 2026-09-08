@@ -33,6 +33,19 @@ http://127.0.0.1:8082/mesh/default             NeuralLift Default Avatar
 http://127.0.0.1:8085/rhymes?word=beton        Offline Reimhilfe
 ```
 
+## Funktionsbereite Browser-Audio-Engine
+
+Die PWA enthält jetzt eine direkt bedienbare WebAudio Engine:
+
+- `AUDIO STARTEN` startet den AudioContext.
+- `MIC ARMEN` fordert Mikrofonberechtigung an und verbindet das Inputsignal.
+- `808 TEST` erzeugt eine 808 Kick mit Pitch-Glide und Limiter.
+- `SNARE TEST` erzeugt eine Noise-Snare.
+- Das XY-Pad steuert Filter/Delay live.
+- Der Meter zeigt Peak/dBFS.
+- Browser-Audioinputs werden per `enumerateDevices()` gelistet.
+- Reimhilfe läuft über Localhost API oder Offline-Fallback.
+
 ## Plug-&-Play Audio Matrix
 
 | Eingang | Statusanzeige | Konfigurierbar | Route | Permission Gate |
@@ -74,6 +87,7 @@ Transient kind=1 freq=52 latency_ms=1
 zero-cloud localhost IPC gate passed for ports 8080-8085
 multi-avatar sync benchmark passed
 android USB/mic/bluetooth permissions and features declared
+web functional audio/device/rhyme contract declared
 ```
 
 ## Aktueller Vollständigkeitsstatus
@@ -89,6 +103,7 @@ android USB/mic/bluetooth permissions and features declared
 | Internes Mic Route | ✅ | ✅ Shim | Runtime-Prompt in Native Shell/Browser |
 | Bluetooth Client Route | ✅ | ✅ Shim | echte Pairing-API später ersetzbar |
 | Native Bridge PortView | ✅ | ✅ | Live API oder Browser-Safe-Fallback |
+| WebAudio Performance Engine | ✅ | ✅ | Browser-funktional mit Mic Prompt und Synth-Tests |
 | Localhost IPC `:8080–:8085` | ✅ | ✅ | Zero-Cloud, loopback-only |
 
 ## Artefakte

@@ -63,6 +63,19 @@ make release-bundle
 | 8084 | dsp-transient-bridge | localhost only |
 | 8085 | offline-whisper-daemon | localhost only |
 
+## Funktionsbereite Browser-Audio-Engine
+
+The PWA now includes a directly runnable WebAudio performance path:
+
+- `AUDIO STARTEN` creates an interactive `AudioContext`.
+- `MIC ARMEN` requests microphone access with echo cancellation, AGC and noise suppression disabled where the browser allows it.
+- `808 TEST` synthesizes a glide 808 kick through a `-3.2 dBFS` waveshaper limiter.
+- `SNARE TEST` synthesizes a filtered noise snare.
+- The XY pad controls filter cutoff, resonance, delay time and feedback in real time.
+- The meter shows live peak level.
+- Browser audio inputs are enumerated with `enumerateDevices()` after permission.
+- The rhyme helper uses the localhost `/rhymes` API when available and a zero-cloud fallback otherwise.
+
 ## Plug & Play Audio Input Matrix
 
 The local master orchestrator exposes configurable input selection and permission

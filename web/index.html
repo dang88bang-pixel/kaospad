@@ -55,6 +55,33 @@
       <div class="permission-grid" id="permission-grid"></div>
     </section>
 
+    <section class="live-engine" aria-labelledby="engine-title">
+      <div>
+        <p class="eyebrow">Funktionsbereit // Browser Audio Engine</p>
+        <h2 id="engine-title">Live Audio starten, Mic armen, 808 testen</h2>
+        <p>Direkt ausführbarer WebAudio-Pfad: Mikrofonberechtigung anfordern, echtes Audioinput-Device wählen, 808/Snare triggern und XY-Pad als Filter/Delay steuern.</p>
+      </div>
+      <div class="engine-controls">
+        <button id="start-audio" type="button">AUDIO STARTEN</button>
+        <button id="arm-mic" type="button">MIC ARMEN</button>
+        <button id="trigger-808" type="button">808 TEST</button>
+        <button id="trigger-snare" type="button">SNARE TEST</button>
+        <select id="browser-device-select" aria-label="Browser Audio Eingangsgerät">
+          <option value="">Default Browser Input</option>
+        </select>
+        <output id="audio-state">AUDIO: STANDBY</output>
+      </div>
+      <div class="meter-wrap">
+        <div class="meter-bar"><span id="meter-fill"></span></div>
+        <output id="meter-readout">PEAK: -120 dBFS</output>
+      </div>
+      <div class="quick-rhymes">
+        <input id="rhyme-word" value="beton" aria-label="Reimwort" />
+        <button id="lookup-rhyme" type="button">REIME LADEN</button>
+        <output id="rhyme-output">BETON · SEKTOR · DÄMON</output>
+      </div>
+    </section>
+
     <section class="pad" aria-label="Kaoss XY Touch Pad"><div class="orb"></div></section>
     <section class="daemon" id="daemon"></section>
   </main>
