@@ -63,6 +63,20 @@ make release-bundle
 | 8084 | dsp-transient-bridge | localhost only |
 | 8085 | offline-whisper-daemon | localhost only |
 
+## Automatischer Port Loader
+
+`make run-app` uses `app.py --port auto` by default. The app selects the first
+available local port from `8080, 8086, 8088, 8090, 8099` and exposes the active
+runtime through:
+
+```text
+/api/runtime
+```
+
+The UI loads this endpoint automatically and displays the active app port, base
+URL and available relative API endpoints. All browser calls use relative paths so
+the same app works on localhost, Android WebView, Tauri and the Arena preview.
+
 ## Eine Anwendung starten
 
 The complete currently executable suite is available as a single local application:

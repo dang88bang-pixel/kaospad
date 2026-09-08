@@ -1,4 +1,27 @@
 import { WebAudioCypherEngine } from './audio-engine.js';
+
+const runtimeConfig = {
+  port: location.port || (location.protocol === 'https:' ? '443' : '80'),
+  base_url: location.origin,
+  endpoints: [],
+  zero_cloud: true,
+};
+
+async function loadRuntimeConfig() {
+  try {
+    const response = await fetch('/api/runtime', { cache: 'no-store' });
+    if (!response.ok) throw new Error('runtime fallback');
+    Object.assign(runtimeConfig, await response.json());
+  } catch {
+    runtimeConfig.endpoints = ['/api/status', '/native-bridge/ports', '/devices/status', '/rhymes'];
+  }
+  document.querySelector('#runtime-port').textContent = String(runtimeConfig.port || location.port || 'AUTO');
+  document.querySelector('#runtime-base').textContent = runtimeConfig.base_url || location.origin;
+  document.querySelector('#runtime-cloud').textContent = runtimeConfig.zero_cloud ? 'LOCKED' : 'CHECK';
+  document.querySelector('#runtime-endpoints').textContent = String(runtimeConfig.endpoints?.length || 0);
+  return runtimeConfig;
+}
+
 const DAEMONS = [
   { port: 8080, name: 'master-system-orchestrator', rule: 'Session State + Profile laden', protocol: 'HTTP JSON' },
   { port: 8081, name: 'audio-loopback-daemon', rule: 'What-U-Hear Float32 Pipe', protocol: 'Raw PCM' },
@@ -16,6 +39,8 @@ const daemonList = document.querySelector('#daemon');
 daemonList.innerHTML = DAEMONS
   .map(({ port }) => `<div>127.0.0.1:${port} // localhost IPC reserved // zero-cloud</div>`)
   .join('');
+
+loadRuntimeConfig();
 
 function offlineStatusFor(port) {
   return {

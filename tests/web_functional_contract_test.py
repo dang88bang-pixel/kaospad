@@ -23,6 +23,9 @@ REQUIRED_IDS = {
     "input-select",
     "permission-check",
     "portview-auto",
+    "runtime-port",
+    "runtime-base",
+    "runtime-endpoints",
     "preset-select",
     "apply-preset",
     "export-session",
@@ -50,6 +53,8 @@ REQUIRED_APP_TOKENS = {
     "loadPresets",
     "exportSession",
     "freezeState",
+    "loadRuntimeConfig",
+    "/api/runtime",
 }
 
 

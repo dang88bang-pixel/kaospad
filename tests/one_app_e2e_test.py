@@ -35,9 +35,15 @@ def main() -> int:
         else:
             raise AssertionError("Kaoss One App did not start")
 
+        runtime = get_json("http://127.0.0.1:8090/api/runtime")
+        assert runtime["port"] == 8090
+        assert runtime["auto_port"] is True
+        assert "/native-bridge/ports" in runtime["endpoints"]
+
         status = get_json("http://127.0.0.1:8090/api/status")
         assert status["mode"] == "single-application"
         assert status["features"]["web_audio_engine"] is True
+        assert status["features"]["auto_port_runtime"] is True
 
         ports = get_json("http://127.0.0.1:8090/native-bridge/ports")
         assert len(ports["ports"]) == 6

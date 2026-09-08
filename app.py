@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import socket
 import sys
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -27,6 +28,7 @@ from device_matrix import save_selection, status as device_status  # noqa: E402
 from rhyme_matrix import ensure_database, lookup  # noqa: E402
 
 APP_VERSION = "5.0.0-offline-one-app"
+AUTO_PORT_CANDIDATES = (8080, 8086, 8088, 8090, 8099)
 DAEMONS = [
     {"port": 8080, "name": "master-system-orchestrator", "protocol": "HTTP JSON", "latency": "AUTO"},
     {"port": 8081, "name": "audio-loopback-daemon", "protocol": "in-app WebAudio/PCM contract", "latency": "0.4ms shim"},
@@ -92,6 +94,27 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "app": "kaoss-one-app", "version": APP_VERSION, "offline": True})
             return
 
+        if path in {"/api/runtime", "/runtime"}:
+            host, port = self.server.server_address[:2]
+            public_host = self.headers.get("Host", f"{host}:{port}")
+            self.send_json({
+                "ok": True,
+                "app": "kaoss-one-app",
+                "version": APP_VERSION,
+                "bind_host": host,
+                "port": int(port),
+                "host_header": public_host,
+                "base_url": f"http://{public_host}",
+                "auto_port": True,
+                "zero_cloud": True,
+                "endpoints": [
+                    "/api/status", "/native-bridge/ports", "/devices/status",
+                    "/permissions/check", "/api/presets", "/api/session/export",
+                    "/rhymes", "/mesh/default", "/dsp/transient"
+                ],
+            })
+            return
+
         if path in {"/api/status", "/status"}:
             self.send_json(
                 {
@@ -111,6 +134,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                         "sample_banks": True,
                         "session_export": True,
                         "live_logs": True,
+                        "auto_port_runtime": True,
                     },
                 }
             )
@@ -224,17 +248,36 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         ]
 
 
+
+def is_port_free(host: str, port: int) -> bool:
+    probe_host = "127.0.0.1" if host in {"0.0.0.0", "localhost"} else host
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(0.2)
+        return sock.connect_ex((probe_host, port)) != 0
+
+
+def resolve_port(host: str, requested: str) -> int:
+    if requested not in {"auto", "0"}:
+        return int(requested)
+    for port in AUTO_PORT_CANDIDATES:
+        if is_port_free(host, port):
+            return port
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind((host, 0))
+        return int(sock.getsockname()[1])
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8080)
+    parser.add_argument("--port", default="auto", help="numeric port, 0, or auto")
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost", "0.0.0.0"}:
         raise SystemExit("Refusing non-local bind host for zero-cloud app")
     ensure_database(DB_PATH)
     mimetypes.add_type("application/manifest+json", ".webmanifest")
-    server = ThreadingHTTPServer((args.host, args.port), OneAppHandler)
-    print(f"Kaoss One App ready: http://{args.host}:{args.port}/", flush=True)
+    port = resolve_port(args.host, str(args.port))
+    server = ThreadingHTTPServer((args.host, port), OneAppHandler)
+    print(f"Kaoss One App ready: http://{args.host}:{port}/", flush=True)
     server.serve_forever()
     return 0
 
