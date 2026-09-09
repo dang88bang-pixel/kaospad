@@ -1,4 +1,17 @@
 import { WebAudioCypherEngine } from './audio-engine.js';
+import {
+  ACTION_BY_NAME,
+  ENGINES,
+  FULL_CHAIN_SCRIPT,
+  SAMPLE_BANKS,
+  chainReducer,
+  createAction,
+  defaultState,
+  formatChainLine,
+  missingMilestones,
+  offlineDispatcher,
+  summarize,
+} from './action-chain.js';
 
 const runtimeConfig = {
   port: location.port || (location.protocol === 'https:' ? '443' : '80'),
@@ -13,7 +26,7 @@ async function loadRuntimeConfig() {
     if (!response.ok) throw new Error('runtime fallback');
     Object.assign(runtimeConfig, await response.json());
   } catch {
-    runtimeConfig.endpoints = ['/api/status', '/native-bridge/ports', '/devices/status', '/rhymes'];
+    runtimeConfig.endpoints = ['/api/status', '/native-bridge/ports', '/devices/status', '/rhymes', '/api/action'];
   }
   document.querySelector('#runtime-port').textContent = String(runtimeConfig.port || location.port || 'AUTO');
   document.querySelector('#runtime-base').textContent = runtimeConfig.base_url || location.origin;
@@ -81,13 +94,14 @@ async function readPortStatus(spec) {
 
 function renderPortCard(spec, status) {
   const tone = status.status === 'READY' || status.status === 'LOCKED' ? 'locked' : 'reserved';
+  const hits = status.chain_hits ? ` // ${status.chain_hits} chain hits` : '';
   return `
     <article class="port-card ${tone}">
       <div class="port-head"><span>:${spec.port}</span><b>${status.status}</b></div>
       <strong>${spec.name}</strong>
       <small>${spec.protocol}</small>
       <p>${spec.rule}</p>
-      <code>${status.bind}:${spec.port} // ${status.latency}</code>
+      <code>${status.bind}:${spec.port} // ${status.latency}${hits}</code>
     </article>
   `;
 }
@@ -107,9 +121,130 @@ document.querySelector('#portview-auto').addEventListener('click', refreshPortVi
 refreshPortView();
 setInterval(refreshPortView, 4000);
 
+// --------------------------------------------------------------------------- //
+// Aktions- & Interaktionskette
+// --------------------------------------------------------------------------- //
+let chainState = defaultState();
+const offlineDispatch = offlineDispatcher();
+const chainLog = document.querySelector('#action-chain-log');
+const chainStateOutput = document.querySelector('#chain-state');
+const strictToggle = document.querySelector('#chain-strict');
+const transportState = document.querySelector('#transport-state');
+const avatarState = document.querySelector('#avatar-state');
+const transcribeOutput = document.querySelector('#transcribe-output');
+const xyReadout = document.querySelector('#xy-readout');
+
+function renderChain(event) {
+  const summary = summarize(chainState);
+  document.querySelector('#chain-length').textContent = String(summary.length);
+  document.querySelector('#chain-seq').textContent = `seq ${summary.seq}`;
+  document.querySelector('#chain-blocked').textContent = String(summary.blocked);
+  document.querySelector('#chain-latency').textContent = `${summary.max_latency_ms.toFixed(3)} ms`;
+  document.querySelector('#chain-total').textContent = `total ${summary.total_latency_ms.toFixed(3)} ms`;
+  document.querySelector('#state-peak').textContent = `${summary.max_peak_dbfs.toFixed(1)} dBFS`;
+  document.querySelector('#state-limiter').textContent = summary.limiter_safe ? 'limiter -3.2 dBFS SAFE' : 'limiter CHECK';
+  document.querySelector('#state-input').textContent = chainState.input;
+  document.querySelector('#state-route').textContent = chainState.audio.mic_armed
+    ? `mic armed // ${chainState.audio.sample_rate_hz / 1000} kHz`
+    : chainState.audio.running
+      ? `running // ${chainState.audio.roundtrip_ms} ms roundtrip`
+      : 'route standby';
+  document.querySelector('#state-transport').textContent = chainState.transport.recording ? 'RECORDING' : 'STOP';
+  document.querySelector('#state-bpm').textContent = `${Number(chainState.kaoss.bpm || chainState.preset?.bpm || 92.4).toFixed(1)} BPM`;
+  const frozen = chainState.kaoss.modules.filter((module) => module.frozen).length;
+  document.querySelector('#state-freeze').textContent = `${frozen}/4`;
+  document.querySelector('#state-loop').textContent = `loop ${chainState.transport.loop_frames} frames`;
+  document.querySelector('#state-avatar').textContent = chainState.avatar.mode;
+  document.querySelector('#state-glb').textContent = chainState.avatar.glb || 'procedural_default_avatar.glb';
+  transportState.value = `TRANSPORT: ${chainState.transport.recording ? 'RECORDING' : chainState.transport.loop_captured ? 'LOOP HELD' : 'IDLE'}`;
+  avatarState.value = `AVATAR: ${chainState.avatar.mode} // ${chainState.avatar.fps} FPS // ${chainState.avatar.avatars} AVATARE`;
+  chainStateOutput.value = `CHAIN: ${summary.length} SCHRITTE // ${summary.blocked} BLOCKED // ${chainState.offlineFallback ? 'OFFLINE FALLBACK' : 'LIVE'}`;
+  const lines = chainState.events.slice(-14).map(formatChainLine);
+  chainLog.textContent = lines.length ? lines.join('\n') : 'CHAIN // noch keine Aktion – starte die vollständige Kette';
+  chainLog.scrollTop = chainLog.scrollHeight;
+  syncFreezeButtons();
+  if (event) flashAction(event);
+}
+
+function flashAction(event) {
+  const button = document.querySelector(`[data-action="${event.action}"]`);
+  if (!button) return;
+  button.classList.add(event.ok ? 'flash-ok' : 'flash-blocked');
+  setTimeout(() => button.classList.remove('flash-ok', 'flash-blocked'), 420);
+}
+
+/**
+ * Eine Aktion ausführen: POST an die One-App State Engine, bei fehlendem Backend
+ * deterministischer Offline-Fallback (statische PWA-Preview).
+ */
+async function dispatchAction(action, params = {}) {
+  const request = createAction(action, params);
+  let event;
+  try {
+    const response = await fetch('/api/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ action, strict: strictToggle?.checked ?? true, ...params }),
+    });
+    if (!response.ok) throw new Error(`action http ${response.status}`);
+    const payload = await response.json();
+    event = {
+      seq: payload.seq,
+      t_ms: payload.t_ms,
+      action: payload.action,
+      engine: payload.engine,
+      port: payload.port,
+      status: payload.status,
+      ok: payload.ok,
+      latency_ms: payload.latency_ms,
+      detail: payload.detail || {},
+      server_state: payload.state,
+    };
+    chainState.offlineFallback = false;
+  } catch {
+    event = offlineDispatch(action, params);
+    chainState.offlineFallback = true;
+  }
+  chainState = chainReducer(chainState, event);
+  renderChain(event);
+  return event;
+}
+
+async function runFullChain() {
+  chainStateOutput.value = 'CHAIN: LÄUFT …';
+  // Die Referenzkette startet immer aus einem definierten Zustand.
+  await dispatchAction('chain.reset');
+  chainState = defaultState();
+  renderChain();
+  // dispatchAction reduziert jedes Event genau einmal in chainState – deshalb
+  // hier bewusst keine zweite Reduktion über runChain().
+  const events = [];
+  for (const step of FULL_CHAIN_SCRIPT) {
+    const { action, ...params } = step;
+    events.push(await dispatchAction(action, params));
+  }
+  renderChain();
+  const summary = summarize(chainState);
+  chainStateOutput.value = `CHAIN: ${summary.length} SCHRITTE // ${summary.blocked} BLOCKED // ${summary.limiter_safe ? 'LIMITER SAFE' : 'LIMITER CHECK'}`;
+  return { ok: events.every((event) => event.ok), steps: events.length, results: events, state: chainState, summary };
+}
+
+document.querySelector('#run-full-chain').addEventListener('click', runFullChain);
+document.querySelector('#chain-reset').addEventListener('click', async () => {
+  await dispatchAction('chain.reset');
+  chainState = defaultState();
+  renderChain();
+});
+
+// --------------------------------------------------------------------------- //
+// XY Pad + Freeze Module
+// --------------------------------------------------------------------------- //
 let liveEngine;
-const pad = document.querySelector('.pad');
+const pad = document.querySelector('#xy-pad');
 const orb = document.querySelector('.orb');
+let lastXYDispatch = 0;
+
 pad.addEventListener('pointermove', (event) => {
   if (event.buttons !== 1 && event.pointerType !== 'touch') return;
   const rect = pad.getBoundingClientRect();
@@ -117,12 +252,216 @@ pad.addEventListener('pointermove', (event) => {
   const y = Math.max(0, Math.min(rect.height, event.clientY - rect.top));
   orb.style.left = `${x - 48}px`;
   orb.style.top = `${y - 48}px`;
-  liveEngine?.applyXY(x / rect.width, y / rect.height);
+  const nx = x / rect.width;
+  const ny = y / rect.height;
+  liveEngine?.applyXY(nx, ny);
+  xyReadout.value = `XY ${nx.toFixed(2)} / ${ny.toFixed(2)} // MODULE 2+3`;
+  const now = Date.now();
+  if (now - lastXYDispatch < 70) return;
+  lastXYDispatch = now;
+  if (!chainState.audio.running) return;
+  dispatchAction('kaoss.xy', { module: 2, x: Number(nx.toFixed(3)), y: Number(ny.toFixed(3)) });
+  dispatchAction('kaoss.xy', { module: 3, x: Number((1 - nx).toFixed(3)), y: Number(ny.toFixed(3)) });
 });
 
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+pad.addEventListener('pointerdown', () => {
+  if (!chainState.audio.running) dispatchAction('audio.start', { sample_rate_hz: 96000, frames_per_buffer: 128 });
+});
 
+const freezeState = [false, false, false, false];
 
+function syncFreezeButtons() {
+  document.querySelectorAll('.freeze').forEach((button) => {
+    const module = Number(button.dataset.module);
+    const frozen = Boolean(chainState.kaoss.modules[module]?.frozen);
+    freezeState[module] = frozen;
+    button.classList.toggle('locked', frozen);
+    button.querySelector('span').textContent = frozen ? 'FREEZE ON' : 'FREEZE OFF';
+  });
+}
+
+document.querySelectorAll('.freeze').forEach((button) => {
+  button.addEventListener('click', async () => {
+    const module = Number(button.dataset.module);
+    const frozen = !freezeState[module];
+    const event = await dispatchAction('kaoss.freeze', { module, frozen });
+    const detail = event.detail || {};
+    document.querySelector('#vault-state').value = detail.frozen
+      ? `FX${module + 1} ${detail.name || ''}: FROZEN`
+      : `FX${module + 1} ${detail.name || ''}: LIVE`;
+  });
+});
+
+// --------------------------------------------------------------------------- //
+// Sample Bank Pads A-D
+// --------------------------------------------------------------------------- //
+const padGrid = document.querySelector('#pad-grid');
+
+function renderPadGrid() {
+  padGrid.innerHTML = SAMPLE_BANKS.map((bank) => bank.slots
+    .map((slot) => `<button type="button" class="drum-pad" data-pad="${bank.bank}/${slot}" data-bank="${bank.bank}" data-slot="${slot}"><span>BANK ${bank.bank}</span><strong>${slot}</strong><small>${bank.label}</small></button>`)
+    .join(''))
+    .join('');
+  padGrid.querySelectorAll('.drum-pad').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const bank = button.dataset.bank;
+      const slot = button.dataset.slot;
+      const event = await dispatchAction('pad.trigger', { bank, slot });
+      if (event.status === 'BLOCKED') {
+        document.querySelector('#vault-state').value = `PAD BLOCKED: erst ${event.detail.missing_milestones.join(', ')}`;
+        return;
+      }
+      const padInfo = event.detail?.pad || {};
+      document.querySelector('#vault-state').value = `PAD ${bank}/${slot} // ${padInfo.transient || 'OK'} // ${padInfo.peak_dbfs ?? '-'} dBFS`;
+      const signal = SAMPLE_BANKS.find((item) => item.bank === bank)?.signal || 'mouth_bass';
+      if (bank === 'A') liveEngine?.trigger808().catch(() => {});
+      if (bank === 'B') liveEngine?.triggerSnare().catch(() => {});
+      if (bank === 'C' || bank === 'D') dispatchAction('dsp.process', { signal, frames: 128 });
+    });
+  });
+}
+
+renderPadGrid();
+
+// --------------------------------------------------------------------------- //
+// Transport: Record + Loop Capture
+// --------------------------------------------------------------------------- //
+document.querySelector('#record-toggle').addEventListener('click', async (event) => {
+  const running = !chainState.transport.recording;
+  const result = await dispatchAction('transport.record', { running });
+  if (result.ok) {
+    event.target.textContent = running ? 'RECORD STOP' : 'RECORD START';
+    return;
+  }
+  const missing = result.detail?.missing_milestones || [];
+  document.querySelector('#vault-state').value = result.status === 'BLOCKED'
+    ? `RECORD BLOCKED: erst ${missing.join(', ') || 'DSP-Block verarbeiten'}`
+    : `RECORD FEHLER: ${result.detail?.error || result.status}`;
+});
+
+document.querySelector('#loop-capture').addEventListener('click', async () => {
+  const result = await dispatchAction('loop.capture', { subdivision: 16 });
+  const detail = result.detail || {};
+  document.querySelector('#vault-state').value = detail.loop_frames
+    ? `LOOP: ${detail.loop_frames} FRAMES // ${detail.loop_ms} MS // ${detail.step_ms} MS STEP`
+    : 'LOOP BLOCKED: erst Aufnahme starten';
+});
+
+// --------------------------------------------------------------------------- //
+// Avatar Stage + NeuralLift
+// --------------------------------------------------------------------------- //
+const avatarMode = document.querySelector('#avatar-mode');
+document.querySelector('#avatar-apply').addEventListener('click', () => dispatchAction('avatar.mode', { mode: avatarMode.value }));
+document.querySelector('#neurallift-run').addEventListener('click', async () => {
+  const result = await dispatchAction('neurallift.generate', { source: 'camera_frame_0001.jpg' });
+  document.querySelector('#vault-state').value = `GLB: ${result.detail?.glb || 'FALLBACK'} // offline`;
+});
+
+// --------------------------------------------------------------------------- //
+// Drück & laber: Transkript + Reime
+// --------------------------------------------------------------------------- //
+document.querySelector('#transcribe-run').addEventListener('click', async () => {
+  const text = document.querySelector('#transcribe-input').value;
+  const result = await dispatchAction('transcribe', { text });
+  if (result.status === 'BLOCKED') {
+    transcribeOutput.value = 'TRANSKRIPT BLOCKED: erst Mic armen';
+    return;
+  }
+  const rhymes = Object.values(result.detail?.rhymes || {}).flat();
+  transcribeOutput.value = `${result.detail?.transcript?.text || text} // ${rhymes.slice(0, 6).join(' · ') || 'keine Reime'}`;
+  const rhymeOutput = document.querySelector('#rhyme-output');
+  if (rhymes.length) rhymeOutput.value = rhymes.slice(0, 8).join(' · ');
+});
+
+// --------------------------------------------------------------------------- //
+// Live Audio Engine (WebAudio)
+// --------------------------------------------------------------------------- //
+const audioState = document.querySelector('#audio-state');
+const meterFill = document.querySelector('#meter-fill');
+const meterReadout = document.querySelector('#meter-readout');
+const browserDeviceSelect = document.querySelector('#browser-device-select');
+
+liveEngine = new WebAudioCypherEngine({
+  onState: (message) => { audioState.value = message; },
+  onLevel: ({ peak, dbfs }) => {
+    const pct = Math.max(0, Math.min(100, peak * 100));
+    meterFill.style.width = `${pct}%`;
+    meterReadout.value = `PEAK: ${dbfs.toFixed(1)} dBFS`;
+  },
+});
+
+async function populateBrowserInputs() {
+  try {
+    const inputs = await liveEngine.enumerateAudioInputs();
+    const options = ['<option value="">Default Browser Input</option>'].concat(
+      inputs.map((device, index) => `<option value="${device.deviceId}">${device.label || `Audio Input ${index + 1}`}</option>`),
+    );
+    browserDeviceSelect.innerHTML = options.join('');
+  } catch {
+    browserDeviceSelect.innerHTML = '<option value="">Default Browser Input</option>';
+  }
+}
+
+document.querySelector('#start-audio').addEventListener('click', async () => {
+  try {
+    await liveEngine.init();
+    await populateBrowserInputs();
+    await dispatchAction('permission.grant', { key: 'record_audio', granted: true });
+    await dispatchAction('audio.start', { sample_rate_hz: Math.round(liveEngine.context?.sampleRate || 96000), frames_per_buffer: 128 });
+  } catch (error) {
+    audioState.value = `AUDIO ERROR: ${error.message}`;
+  }
+});
+
+document.querySelector('#arm-mic').addEventListener('click', async () => {
+  try {
+    await liveEngine.armMic(browserDeviceSelect.value);
+    await populateBrowserInputs();
+    const event = await dispatchAction('mic.arm', { device_id: browserDeviceSelect.value || 'browser-default' });
+    if (event.status === 'BLOCKED') audioState.value = `MIC BLOCKED: ${event.detail?.missing_milestones?.join(', ')}`;
+    refreshDeviceMatrix();
+  } catch (error) {
+    audioState.value = `MIC ERROR: ${error.message}`;
+    dispatchAction('mic.arm', { device_id: browserDeviceSelect.value || 'browser-default' });
+  }
+});
+
+document.querySelector('#trigger-808').addEventListener('click', () => {
+  liveEngine.trigger808().catch((error) => { audioState.value = `808 ERROR: ${error.message}`; });
+  dispatchAction('dsp.process', { signal: 'mouth_bass', frames: 128 });
+});
+
+document.querySelector('#trigger-snare').addEventListener('click', () => {
+  liveEngine.triggerSnare().catch((error) => { audioState.value = `SNARE ERROR: ${error.message}`; });
+  dispatchAction('dsp.process', { signal: 'snare', frames: 128 });
+});
+
+async function lookupRhymes() {
+  const word = document.querySelector('#rhyme-word').value || 'beton';
+  const out = document.querySelector('#rhyme-output');
+  const event = await dispatchAction('rhyme.lookup', { word });
+  const rhymes = event.detail?.rhymes;
+  if (Array.isArray(rhymes) && rhymes.length) {
+    out.value = rhymes.join(' · ');
+    return;
+  }
+  try {
+    const response = await fetch(`/rhymes?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error('offline fallback');
+    const payload = await response.json();
+    out.value = payload.rhymes.join(' · ');
+  } catch {
+    const local = word.toLowerCase().endsWith('on') ? ['BETON', 'SEKTOR', 'DÄMON', 'NEON', 'PHONON'] : ['KAOSS', 'RAUS', 'HAUS', 'APPLAUS'];
+    out.value = local.join(' · ');
+  }
+}
+
+document.querySelector('#lookup-rhyme').addEventListener('click', lookupRhymes);
+populateBrowserInputs();
+
+// --------------------------------------------------------------------------- //
+// Plug & Play I/O Matrix
+// --------------------------------------------------------------------------- //
 const inputSelect = document.querySelector('#input-select');
 const deviceGrid = document.querySelector('#device-grid');
 const permissionGrid = document.querySelector('#permission-grid');
@@ -204,94 +543,27 @@ async function refreshDeviceMatrix() {
 }
 
 inputSelect.addEventListener('change', async () => {
-  try {
-    await fetch(`/devices/select?input=${encodeURIComponent(inputSelect.value)}`, { cache: 'no-store' });
-  } catch {
-    // Native/static fallback still updates the view.
-  }
+  await dispatchAction('input.select', { input: inputSelect.value });
   refreshDeviceMatrix();
 });
-document.querySelector('#permission-check').addEventListener('click', refreshDeviceMatrix);
+document.querySelector('#permission-check').addEventListener('click', async () => {
+  const event = await dispatchAction('permission.check');
+  const detail = event.detail || {};
+  permissionMode.value = detail.pending?.length
+    ? `PERMISSION: PENDING ${detail.pending.join(', ')}`
+    : `PERMISSION: ALLE BEREIT // ${chainState.input}`;
+  refreshDeviceMatrix();
+});
 refreshDeviceMatrix();
 setInterval(refreshDeviceMatrix, 5000);
 
-
-const audioState = document.querySelector('#audio-state');
-const meterFill = document.querySelector('#meter-fill');
-const meterReadout = document.querySelector('#meter-readout');
-const browserDeviceSelect = document.querySelector('#browser-device-select');
-
-liveEngine = new WebAudioCypherEngine({
-  onState: (message) => { audioState.value = message; },
-  onLevel: ({ peak, dbfs }) => {
-    const pct = Math.max(0, Math.min(100, peak * 100));
-    meterFill.style.width = `${pct}%`;
-    meterReadout.value = `PEAK: ${dbfs.toFixed(1)} dBFS`;
-  },
-});
-
-async function populateBrowserInputs() {
-  try {
-    const inputs = await liveEngine.enumerateAudioInputs();
-    const options = ['<option value="">Default Browser Input</option>'].concat(
-      inputs.map((device, index) => `<option value="${device.deviceId}">${device.label || `Audio Input ${index + 1}`}</option>`),
-    );
-    browserDeviceSelect.innerHTML = options.join('');
-  } catch {
-    browserDeviceSelect.innerHTML = '<option value="">Default Browser Input</option>';
-  }
-}
-
-document.querySelector('#start-audio').addEventListener('click', async () => {
-  try {
-    await liveEngine.init();
-    await populateBrowserInputs();
-  } catch (error) {
-    audioState.value = `AUDIO ERROR: ${error.message}`;
-  }
-});
-
-document.querySelector('#arm-mic').addEventListener('click', async () => {
-  try {
-    await liveEngine.armMic(browserDeviceSelect.value);
-    await populateBrowserInputs();
-    refreshDeviceMatrix();
-  } catch (error) {
-    audioState.value = `MIC ERROR: ${error.message}`;
-  }
-});
-
-document.querySelector('#trigger-808').addEventListener('click', () => {
-  liveEngine.trigger808().catch((error) => { audioState.value = `808 ERROR: ${error.message}`; });
-});
-
-document.querySelector('#trigger-snare').addEventListener('click', () => {
-  liveEngine.triggerSnare().catch((error) => { audioState.value = `SNARE ERROR: ${error.message}`; });
-});
-
-async function lookupRhymes() {
-  const word = document.querySelector('#rhyme-word').value || 'beton';
-  const out = document.querySelector('#rhyme-output');
-  try {
-    const response = await fetch(`/rhymes?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
-    if (!response.ok) throw new Error('offline fallback');
-    const payload = await response.json();
-    out.value = payload.rhymes.join(' · ');
-  } catch {
-    const local = word.toLowerCase().endsWith('on') ? ['BETON', 'SEKTOR', 'DÄMON', 'NEON', 'PHONON'] : ['KAOSS', 'RAUS', 'HAUS', 'APPLAUS'];
-    out.value = local.join(' · ');
-  }
-}
-
-document.querySelector('#lookup-rhyme').addEventListener('click', lookupRhymes);
-populateBrowserInputs();
-
-
+// --------------------------------------------------------------------------- //
+// Presets, Bänke, Export
+// --------------------------------------------------------------------------- //
 const presetSelect = document.querySelector('#preset-select');
 const vaultState = document.querySelector('#vault-state');
 const bankGrid = document.querySelector('#bank-grid');
 const liveLog = document.querySelector('#live-log');
-const freezeState = [false, false, false, false];
 let presetCache = null;
 
 function fallbackPresets() {
@@ -302,12 +574,7 @@ function fallbackPresets() {
       { id: 'cyber_drill', name: 'Cyber Drill', bpm: 142, drive: 0.52, filter: 0.46, delay: 0.12 },
       { id: 'lofi_cypher', name: 'Lo-Fi Cypher', bpm: 84, drive: 0.24, filter: 0.36, delay: 0.42 },
     ],
-    sample_banks: [
-      { bank: 'A', label: 'Kick / 808', slots: ['SUB DROP', 'BOOM', 'TAPE KICK', 'MOUTH 808'] },
-      { bank: 'B', label: 'Snare / Clap', slots: ['MPC SNARE', 'CLAP', 'RIM', 'NOISE SNAP'] },
-      { bank: 'C', label: 'Hat / Perc', slots: ['TS HAT', 'SHAKER', 'ROLL 16', 'ROLL 32'] },
-      { bank: 'D', label: 'Vocal FX', slots: ['DUB', 'FORMANT', 'FREEZE', 'REVERSE'] },
-    ],
+    sample_banks: SAMPLE_BANKS.map(({ bank, label, slots }) => ({ bank, label, slots })),
   };
 }
 
@@ -329,11 +596,20 @@ async function loadPresets() {
   return presetCache;
 }
 
-async function applyPreset() {
+async function applyPreset({ dispatch = true } = {}) {
   const data = await loadPresets();
   const preset = data.presets.find((item) => item.id === presetSelect.value) || data.presets[0];
   liveEngine?.applyXY(preset.filter, preset.delay);
-  vaultState.value = `PRESET: ${preset.name.toUpperCase()} // ${preset.bpm} BPM`;
+  // Beim Boot wird das Preset nur lokal gesetzt: die Aktionskette soll erst mit
+  // einer echten Benutzerinteraktion (oder der vollständigen Kette) starten.
+  if (!dispatch) {
+    vaultState.value = `PRESET: ${String(preset.name || preset.id).toUpperCase()} // ${preset.bpm} BPM (READY)`;
+    return preset;
+  }
+  const event = await dispatchAction('preset.apply', { preset: preset.id });
+  const applied = event.detail?.preset || preset;
+  vaultState.value = `PRESET: ${String(applied.name || applied.id).toUpperCase()} // ${applied.bpm} BPM`;
+  return applied;
 }
 
 function downloadJson(filename, payload) {
@@ -350,14 +626,22 @@ async function exportSession() {
   const input = inputSelect?.value || 'internal_mic';
   const preset = presetSelect?.value || '90s_tape';
   try {
-    const response = await fetch(`/api/session/export?preset=${encodeURIComponent(preset)}&input=${encodeURIComponent(input)}`, { cache: 'no-store' });
+    const response = await fetch('/api/session/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ preset, input }),
+    });
     if (!response.ok) throw new Error('export fallback');
     const payload = await response.json();
-    downloadJson(`kaoss-${preset}-${input}.cypher`, payload.session);
-    vaultState.value = `VAULT: EXPORTED ${preset}`;
+    const session = payload.detail?.session || payload.session;
+    downloadJson(`kaoss-${preset}-${input}.cypher`, session);
+    vaultState.value = `VAULT: EXPORTED ${preset} // ${session?.chain_length ?? 0} CHAIN STEPS`;
+    return session;
   } catch {
-    downloadJson(`kaoss-${preset}-${input}.cypher`, { format: '.cypher', preset, input, offline: true, limiter_dbfs: -3.2, freezeState });
+    downloadJson(`kaoss-${preset}-${input}.cypher`, { format: '.cypher', preset, input, offline: true, limiter_dbfs: -3.2, freezeState, events: chainState.events });
     vaultState.value = `VAULT: EXPORTED FALLBACK ${preset}`;
+    return null;
   }
 }
 
@@ -366,26 +650,50 @@ async function loadLogs() {
     const response = await fetch('/api/logs', { cache: 'no-store' });
     if (!response.ok) throw new Error('log fallback');
     const payload = await response.json();
-    liveLog.textContent = payload.logs.join('
-');
+    liveLog.textContent = payload.logs.join('\n');
   } catch {
-    liveLog.textContent = ['BOOT static preview', 'PORTVIEW safe fallback', 'DSP WebAudio ready', 'VAULT local export ready'].join('
-');
+    liveLog.textContent = ['BOOT static preview', 'PORTVIEW safe fallback', 'DSP WebAudio ready', 'VAULT local export ready'].join('\n');
   }
 }
 
-document.querySelectorAll('.freeze').forEach((button) => {
-  button.addEventListener('click', () => {
-    const module = Number(button.dataset.module);
-    freezeState[module] = !freezeState[module];
-    button.classList.toggle('locked', freezeState[module]);
-    button.querySelector('span').textContent = freezeState[module] ? 'FREEZE ON' : 'FREEZE OFF';
-    vaultState.value = `FX${module + 1}: ${freezeState[module] ? 'FROZEN' : 'LIVE'}`;
-  });
-});
-
 document.querySelector('#apply-preset').addEventListener('click', applyPreset);
 document.querySelector('#export-session').addEventListener('click', exportSession);
-loadPresets().then(applyPreset);
+loadPresets().then(() => applyPreset({ dispatch: false }));
 loadLogs();
 setInterval(loadLogs, 6000);
+
+// --------------------------------------------------------------------------- //
+// Boot: State von der Engine holen, damit die UI die laufende Kette zeigt
+// --------------------------------------------------------------------------- //
+async function hydrateFromServer() {
+  try {
+    const response = await fetch('/api/state', { cache: 'no-store' });
+    if (!response.ok) throw new Error('state fallback');
+    const state = await response.json();
+    if (state?.chain?.length) {
+      const events = await fetch(`/api/events?since=0`, { cache: 'no-store' }).then((res) => (res.ok ? res.json() : { events: [] }));
+      chainState = defaultState();
+      (events.events || []).forEach((event) => { chainState = chainReducer(chainState, event); });
+    }
+    if (state?.input?.selected) inputSelect.value = state.input.selected;
+    renderChain();
+  } catch {
+    renderChain();
+  }
+}
+
+hydrateFromServer();
+
+// Debug-/Test-Hook: headless Kettenausführung aus der Browserkonsole oder Playwright.
+globalThis.__KAOSS_CHAIN__ = {
+  state: () => chainState,
+  summary: () => summarize(chainState),
+  dispatch: dispatchAction,
+  runFullChain,
+  script: FULL_CHAIN_SCRIPT,
+  catalogue: ACTION_BY_NAME,
+  engines: ENGINES,
+  missing: (action) => missingMilestones(chainState, action),
+};
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');

@@ -1,7 +1,7 @@
 # Bereitstellungs- und Validierungsbericht – Kaoss Pad & AI Beatbox Studio
 
-Datum: 2026-09-08  
-Branch: `arena/01a081b7-kaospad`
+Datum: 2026-09-09  
+Branch: `arena/01a083de-kaospad`
 
 ## Ergebnis
 
@@ -46,6 +46,78 @@ http://127.0.0.1:8080/permissions/check        Berechtigungsstatus
 http://127.0.0.1:8082/mesh/default             NeuralLift Default Avatar
 http://127.0.0.1:8085/rhymes?word=beton        Offline Reimhilfe
 ```
+
+## Vollständige Aktions- und Interaktionskette (neu, 2026-09-09)
+
+Die Suite besitzt jetzt eine durchgängige, zustandsbehaftete Interaktionskette
+statt einzelner statischer Endpoints.
+
+Neue Module:
+
+| Modul | Rolle |
+|---|---|
+| `engines/session_engine.py` | Session-State, Aktionskatalog (19 Aktionen), Reihenfolge-Guards, Event-Log, `.cypher`-Export |
+| `engines/dsp_chain.py` | deterministischer Python-Spiegel des C++-DSP-Kerns (Limiter, Transient-Splitter, 808/Snare/Hat, Kaoss Quad inkl. Looper/Vinyl/Tape-Echo, Metering) |
+| `web/src/action-chain.js` | DOM-freies Browser-Modul mit derselben Kette (Reducer, Runner, Offline-Dispatcher) |
+| `web/src/app.js` | alle UI-Elemente dispatchen echte Aktionen (POST) und rendern Ketten-Log/State |
+| `app.py` | `POST /api/action`, 18 dedizierte POST-Routen, `/api/state`, `/api/events`, `/api/actions`, `/api/dsp/report`, `/api/chain/run`, Origin-Guard |
+| `engines/localhost_ipc_suite.py` | teilt dieselbe Engine über die Ports 8080/8082/8085, UDP-Bridge 8084 fährt echte DSP-Blöcke, Rollentrennung per `403` |
+
+Kanonische Kette (23 Schritte):
+
+```text
+boot → input.select → permission.check → permission.grant → audio.start → mic.arm
+→ preset.apply → kaoss.xy ×2 → dsp.process → pad.trigger → dsp.process → pad.trigger
+→ dsp.process → transport.record → loop.capture → kaoss.freeze → transcribe
+→ rhyme.lookup → avatar.mode → neurallift.generate → transport.record(stop) → session.export
+```
+
+### Validierte Eigenschaften
+
+| Eigenschaft | Nachweis |
+|---|---|
+| Reihenfolge-Guards | `mic.arm`, `dsp.process`, `pad.trigger`, `loop.capture`, `neurallift.generate`, `session.export` liefern `BLOCKED` inkl. `missing_milestones`/`expected_before` |
+| Limiter | jeder DSP-Block `output_peak_dbfs <= -3.2 dBFS`, `headroom_db >= 0` |
+| Transient-Splitter | `mouth_bass→KICK808`, `snare→SNARE_CLAP`, `hat→HAT_ROLL`, `vocal→NONE` (48 kHz und 96 kHz, 16–1024 Frames) |
+| Latenzbudget | Block-Latenz `<= 1.2 ms`, Aktions-Latenz `<= 400 ms` (CI-Budget), gemessen max ≈ 8–13 ms |
+| Looper/Freeze | eingefrorenes Modul liefert zwei identische Block-Checksummen; XY auf frozen-Modul wird als `held` ignoriert |
+| Quantisierung | 1/16 bei 128 BPM = `117.188 ms`, Loop = `468.75 ms` = `45000` Frames @96 kHz bzw. `22500` @48 kHz |
+| Determinismus | identische Kette ⇒ identischer `.cypher`-SHA-256 (zwei Server-Runs + Referenzmodell) |
+| Ketten-Äquivalenz | HTTP-Kette == Referenzmodell `SessionEngine.run_script()` (gleicher Checksum) |
+| UI ↔ Server Konvergenz | Client-Spiegel (`chainReducer`) == `/api/state` (Kettenlänge, Aktionen, BPM, Input, Freeze, DSP-Blöcke, Limiter, Avatar, Transport) |
+| Projektionen | `/api/state`, `/api/events?since=`, `/api/logs`, `/api/dsp/report`, `/native-bridge/ports` (`chain_hits`), `/session`, `/dsp/transient` |
+| Zero-Cloud | Socket-Monkeypatch: 0 Nicht-Loopback-Ziele, 2 externe Versuche blockiert; `X-Kaoss-Zero-Cloud: true` auf jeder Antwort |
+| CSRF/Origin | `POST` mit fremdem `Origin` ⇒ `403`, Loopback-Origin ⇒ erlaubt |
+| Backwards-Kompatibilität | alle bisherigen GET-Verträge und `tests/one_app_e2e_test.py` unverändert grün |
+
+### Neue Testausgabe
+
+```text
+vollständige Aktions- und Interaktionskette verifiziert: 236 Checks, 23 Ketten-Schritte, max 7.847 ms, peak -3.2 dBFS
+browser action & interaction chain verified: 89 checks (offline + blocked + live server)
+browser UI action & interaction chain verified: 93 checks against http://127.0.0.1:8106
+zero-cloud socket guard passed: 24 chain steps, 3 loopback connections, 1 resolved hosts, 2 external attempts blocked
+zero-cloud localhost IPC gate passed for ports 8080-8085 (shared action chain)
+web functional audio/device/rhyme contract declared // action chain parity: 19 actions, 23 chain steps, 6 engine ports
+```
+
+Der UI-Test (`tests/web_ui_interaction_chain_test.mjs`) lädt das reale
+`web/src/app.js` mit einem minimalen DOM-/WebAudio-Stub gegen einen echten
+One-App-Server und löst echte Benutzer-Events aus (Select-Wechsel, Klicks,
+XY-Pointermove, 16 Pads, Record, Loop, Transkript, Avatar, Export,
+„VOLLSTÄNDIGE KETTE AUSFÜHREN“). Damit ist die Kette **UI → HTTP → Engine → DSP →
+State → UI** ohne Browser und ohne Cloud getestet.
+
+### Ehrliche Abgrenzung
+
+- `dsp_chain.py` ist ein deterministischer **Spiegel** des C++-Kerns für
+  Server/CI/UI-State – der Echtzeit-Audiopfad bleibt C++/WebAudio.
+- `transcribe` nutzt weiterhin den Offline-Text-Shim; ein echtes `whisper.tflite`
+  ist offen (siehe TODO 5.1).
+- `neurallift.generate` liefert ein prozedurales Offline-GLB-Fallback-Objekt,
+  keine echte Bild-zu-Mesh-Inferenz.
+- Die Kette läuft pro Prozess (ein State pro App-Instanz); Multi-Client-Sessions
+  und Persistenz über Neustarts sind offen.
 
 ## Kaoss Quad Console & Vault
 
@@ -109,12 +181,15 @@ python3 engines/device_matrix.py
 AudioFlinger direct-pipe simulator: route=127.0.0.1:8081 roundtrip_ms=1.2
 Limiter peak=-3.2 dBFS threshold=-3.2 dBFS
 Transient kind=1 freq=52 latency_ms=1
-zero-cloud localhost IPC gate passed for ports 8080-8085
+zero-cloud localhost IPC gate passed for ports 8080-8085 (shared action chain)
 multi-avatar sync benchmark passed
 android USB/mic/bluetooth permissions and features declared
-web functional audio/device/rhyme contract declared
+web functional audio/device/rhyme contract declared // action chain parity: 19 actions, 23 chain steps, 6 engine ports
 kaoss one-app e2e contract passed
-# includes presets, sample banks, .cypher export and logs
+vollständige Aktions- und Interaktionskette verifiziert: 236 Checks, 23 Ketten-Schritte, max 7.847 ms, peak -3.2 dBFS
+browser action & interaction chain verified: 89 checks (offline + blocked + live server)
+browser UI action & interaction chain verified: 93 checks against http://127.0.0.1:8106
+zero-cloud socket guard passed: 24 chain steps, 3 loopback connections, 1 resolved hosts, 2 external attempts blocked
 ```
 
 ## Aktueller Vollständigkeitsstatus
@@ -133,6 +208,13 @@ kaoss one-app e2e contract passed
 | WebAudio Performance Engine | ✅ | ✅ | Browser-funktional mit Mic Prompt und Synth-Tests |
 | Kaoss One App `app.py` | ✅ | ✅ | Eine Anwendung mit UI + APIs + Tests |
 | Localhost IPC `:8080–:8085` | ✅ | ✅ | Zero-Cloud, loopback-only |
+| Session-State-Engine | ✅ | ✅ | `engines/session_engine.py`, 19 Aktionen |
+| Aktions- & Interaktionskette | ✅ | ✅ | POST `/api/action`, `/api/chain/run`, UI-Panel |
+| Reihenfolge-Guards (`BLOCKED`) | ✅ | ✅ | Milestone-Modell pro Aktion |
+| Python-DSP-Kette | ✅ | ✅ Spiegel | `engines/dsp_chain.py` (C++-Verträge 1:1) |
+| Looper/Freeze + BPM-Quantisierung | ✅ | ✅ | `loop.capture`, 1/16 bei Preset-BPM |
+| Ketten-Export `.cypher` | ✅ | ✅ | inkl. Aktionskette + SHA-256 |
+| Ketten-Tests (HTTP/Node/UI/Zero-Cloud) | ✅ | ✅ | 236 + 89 + 93 Checks |
 
 ## Artefakte
 

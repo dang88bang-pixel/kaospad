@@ -1,0 +1,7 @@
+{
+  "name": "kaoss-web-pwa",
+  "version": "5.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline-first Kaoss/AI-Beatbox PWA. type=module erlaubt es, web/src/action-chain.js sowohl im Browser als auch headless in Node (tests/action_chain_ui_test.mjs) als ES-Modul zu laden."
+}

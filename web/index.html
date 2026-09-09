@@ -123,7 +123,65 @@
       </div>
     </section>
 
-    <section class="pad" aria-label="Kaoss XY Touch Pad"><div class="orb"></div></section>
+    <section class="chain-panel" aria-labelledby="chain-title">
+      <div>
+        <p class="eyebrow">Aktions- &amp; Interaktionskette // One App State Engine</p>
+        <h2 id="chain-title">Vollständige Kette: Input → DSP → Loop → Export</h2>
+        <p>Jeder Klick, jede Pad-Berührung und jede XY-Bewegung wird als Aktion mit Sequenznummer, Engine-Port, Latenz und Status an die lokale State-Engine übergeben. Falsche Reihenfolge wird als <code>BLOCKED</code> quittiert, statt still zu succeedieren.</p>
+      </div>
+      <div class="chain-controls">
+        <button id="run-full-chain" type="button">VOLLSTÄNDIGE KETTE AUSFÜHREN</button>
+        <button id="chain-reset" type="button" class="ghost">KETTE RESET</button>
+        <label class="toggle" for="chain-strict"><input id="chain-strict" type="checkbox" checked /> strict (Reihenfolge erzwingen)</label>
+        <output id="chain-state">CHAIN: IDLE</output>
+      </div>
+      <div class="chain-grid">
+        <article><span>SCHRITTE</span><strong id="chain-length">0</strong><small id="chain-seq">seq 0</small></article>
+        <article><span>BLOCKED</span><strong id="chain-blocked">0</strong><small>out-of-order guard</small></article>
+        <article><span>LATENZ MAX</span><strong id="chain-latency">0.000 ms</strong><small id="chain-total">total 0.000 ms</small></article>
+        <article><span>PEAK</span><strong id="state-peak">-120.0 dBFS</strong><small id="state-limiter">limiter -3.2 dBFS</small></article>
+        <article><span>INPUT</span><strong id="state-input">internal_mic</strong><small id="state-route">route standby</small></article>
+        <article><span>TRANSPORT</span><strong id="state-transport">STOP</strong><small id="state-bpm">92.4 BPM</small></article>
+        <article><span>FREEZE</span><strong id="state-freeze">0/4</strong><small id="state-loop">loop 0 frames</small></article>
+        <article><span>AVATAR</span><strong id="state-avatar">CYPHER_CIRCLE</strong><small id="state-glb">procedural_default_avatar.glb</small></article>
+      </div>
+      <div class="chain-actions">
+        <div class="transport">
+          <button id="record-toggle" type="button">RECORD START</button>
+          <button id="loop-capture" type="button" class="ghost">LOOP CAPTURE 1/16</button>
+          <output id="transport-state">TRANSPORT: IDLE</output>
+        </div>
+        <div class="avatar-controls">
+          <label for="avatar-mode">Avatar Stage</label>
+          <select id="avatar-mode">
+            <option value="CYPHER_CIRCLE" selected>Cypher Circle (8 Avatare)</option>
+            <option value="PARTY_8">Multi-Avatar Party</option>
+            <option value="SOLO_HUD">Clean Cypher HUD (Solo)</option>
+            <option value="TANZ_ANLERNEN">Tanz-Anlern-Modus</option>
+            <option value="ENDLESS_REEL">Endless Reel Recursion</option>
+          </select>
+          <button id="avatar-apply" type="button" class="ghost">MODUS SETZEN</button>
+          <button id="neurallift-run" type="button" class="ghost">GLB GENERIEREN</button>
+          <output id="avatar-state">AVATAR: CYPHER_CIRCLE // 60 FPS</output>
+        </div>
+        <div class="lyrics-controls">
+          <label for="transcribe-input">Drück &amp; laber</label>
+          <input id="transcribe-input" value="drück und laber beton sektor dämon" aria-label="Transkript Text" />
+          <button id="transcribe-run" type="button" class="ghost">TRANSKRIBIEREN + REIME</button>
+          <output id="transcribe-output">OFFLINE WHISPER SHIM READY</output>
+        </div>
+      </div>
+      <div class="pad-section">
+        <p class="eyebrow">Sample Bänke A–D // Ketten-Trigger</p>
+        <div class="pad-grid" id="pad-grid"></div>
+      </div>
+      <pre class="chain-log" id="action-chain-log">CHAIN // noch keine Aktion – starte die vollständige Kette</pre>
+    </section>
+
+    <section class="pad" id="xy-pad" aria-label="Kaoss XY Touch Pad">
+      <div class="orb"></div>
+      <output class="xy-readout" id="xy-readout">XY 0.50 / 0.50 // MODULE 2+3</output>
+    </section>
     <section class="daemon" id="daemon"></section>
   </main>
   <script type="module" src="./src/app.js"></script>
