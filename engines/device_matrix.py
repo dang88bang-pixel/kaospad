@@ -88,6 +88,13 @@ def devices(selected: InputKind = "internal_mic") -> list[DeviceSpec]:
 
 
 def status(selected: InputKind = "internal_mic") -> dict[str, object]:
+    probe: dict[str, object] = {"ok": True, "alsa_cards": [], "snd_nodes": [], "has_capture": False, "offline": True}
+    try:
+        from local_audio_probe import alsa_cards
+
+        probe = alsa_cards()
+    except Exception:  # noqa: BLE001 - probe is optional, contract stays
+        pass
     return {
         "ok": True,
         "offline": True,
@@ -96,6 +103,7 @@ def status(selected: InputKind = "internal_mic") -> dict[str, object]:
         "hotplug_poll_ms": 750,
         "permissions": [asdict(item) for item in permissions()],
         "devices": [asdict(item) for item in devices(selected)],
+        "probe": probe,
     }
 
 

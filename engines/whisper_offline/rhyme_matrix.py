@@ -13,6 +13,10 @@ DEFAULT_ROWS = [
     ("kaoss", "aʊs", "raus,haus,applaus,maus,brauchs"),
     ("berlin", "ɪn", "termin,gewinn,benzin,magazin,ramin"),
     ("cypher", "aɪfɐ", "eifer,greifer,schleifer,streifer,live-er"),
+    ("neon", "eːɔn", "beton,dämon,neon,phonon,patron"),
+    ("flow", "oː", "show,go,slow,throw,outro"),
+    ("bunker", "ʊŋkɐ", "funk-er,unker,punker,dunkler"),
+    ("pad", "at", "hat,splat,flat,beat-hat"),
 ]
 
 

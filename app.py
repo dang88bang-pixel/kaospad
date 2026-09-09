@@ -254,6 +254,26 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             })
             return
 
+        if path in {"/api/events/stream", "/events/stream"}:
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            since = int(query.get("since", ["0"])[0] or 0)
+            events = ENGINE.events_since(since)
+            chunk = f"data: {json.dumps({'ok': True, 'events': events}, ensure_ascii=False)}\n\n"
+            self.wfile.write(chunk.encode("utf-8"))
+            return
+
+        if path in {"/api/session/latest", "/session/latest"}:
+            try:
+                payload = ENGINE.load_session()
+                self.send_json({"ok": True, "session": payload})
+            except FileNotFoundError:
+                self.send_json({"ok": False, "error": "no persisted session"}, code=404)
+            return
+
         if path in {"/api/events", "/api/chain", "/events"}:
             since = int(query.get("since", ["0"])[0] or 0)
             events = ENGINE.events_since(since)
@@ -326,6 +346,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                 "avatars": ENGINE.avatar["avatars"],
                 "bones": ENGINE.avatar["bones"],
                 "mode": ENGINE.avatar["mode"],
+                "skeleton": ENGINE.avatar.get("skeleton"),
             })
             return
 
