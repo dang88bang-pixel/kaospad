@@ -1,8 +1,8 @@
 # Vollständige GitHub-Dokumentation: Abarbeitbare TODO-Liste
 
 Projekt: **Korg Kaoss Pad & AI Beatbox Studio // NeuralLift-360 3D Dance Suite**  
-Dokumentstand: 2026-09-08  
-Branch: `arena/01a081b7-kaospad`  
+Dokumentstand: 2026-09-09  
+Branch: `arena/01a083de-kaospad`  
 Ziel: Vollständige, ehrliche Liste aller vorhandenen, simulierten und noch fehlenden Teile, Anbindungen, Attribute, UI-Screens, Tests, Plattform-Builds und Release-Schritte.
 
 ---
@@ -16,6 +16,8 @@ Ziel: Vollständige, ehrliche Liste aller vorhandenen, simulierten und noch fehl
 | 🧩 TODO | Muss noch implementiert werden. |
 | ⛔ BLOCKED | Benötigt externe Hardware, Vendor-SDK, Modellgewicht, Zertifikat oder OS-spezifische Build-Umgebung. |
 | 🔁 REPLACEABLE | Aktueller Shim ist bewusst so gebaut, dass er später durch echte Implementierung ersetzt werden kann. |
+
+Checkbox-Marker: `[x]` = erledigt und getestet, `[~]` = teilweise erledigt (lauffähiger Zwischenstand, Rest offen), `[ ]` = offen.
 
 ---
 
@@ -42,11 +44,16 @@ Ziel: Vollständige, ehrliche Liste aller vorhandenen, simulierten und noch fehl
 | CI Workflows | `.github/workflows/` | ✅ DONE / 🧪 teilweise |
 | Validation Report | `VALIDATION_REPORT.md` | ✅ DONE |
 | Kaoss One App | `app.py` | ✅ DONE |
+| Session-State-Engine + Aktionskette | `engines/session_engine.py` | ✅ DONE |
+| Python-DSP-Spiegel (Limiter/Transient/Quad) | `engines/dsp_chain.py` | ✅ DONE |
+| Browser-Kettenmodul (DOM-frei) | `web/src/action-chain.js` | ✅ DONE |
+| POST-Aktions-API + Origin-Guard | `app.py`, `engines/localhost_ipc_suite.py` | ✅ DONE |
 
 ### 1.2 Lokal erfolgreich getestet
 
 ```bash
-make test
+make test                  # inkl. Aktionsketten-, UI- und Zero-Cloud-Gates
+make demo-chain            # vollständige Kette in der Konsole
 ./scripts/package_web_pwa.sh
 python3 engines/device_matrix.py
 ```
@@ -60,7 +67,45 @@ Transient kind=1 freq=52 latency_ms=1
 zero-cloud localhost IPC gate passed for ports 8080-8085
 multi-avatar sync benchmark passed
 android USB/mic/bluetooth permissions and features declared
+web functional audio/device/rhyme contract declared // action chain parity: 19 actions, 23 chain steps, 6 engine ports
+kaoss one-app e2e contract passed
+vollständige Aktions- und Interaktionskette verifiziert: 236 Checks, 23 Ketten-Schritte, max 7.847 ms, peak -3.2 dBFS
+browser action & interaction chain verified: 89 checks (offline + blocked + live server)
+browser UI action & interaction chain verified: 93 checks against http://127.0.0.1:8106
+zero-cloud socket guard passed: 24 chain steps, 3 loopback connections, 1 resolved hosts, 2 external attempts blocked
 ```
+
+---
+
+## 1.3 Aktions- und Interaktionskette (neu)
+
+Vollständig implementiert und getestet ist die durchgängige Kette
+**UI-Interaktion → POST-Aktion → Session-Engine → DSP/Engines → State → UI/Export**:
+
+| Baustein | Pfad | Status |
+|---|---|---|
+| 19 Aktionen mit Engine-/Port-Zuordnung und Reihenfolge-Guards | `engines/session_engine.py` | ✅ DONE |
+| Deterministischer DSP-Spiegel (Limiter, Transient, 808/Snare/Hat, Kaoss Quad, Looper, Vinyl, Tape Echo, Metering) | `engines/dsp_chain.py` | ✅ DONE |
+| POST `/api/action` + 18 dedizierte Routen + `/api/chain/run` | `app.py` | ✅ DONE |
+| Read-Projektionen `/api/state`, `/api/events`, `/api/logs`, `/api/dsp/report` | `app.py` | ✅ DONE |
+| Geteilte Engine im Multi-Daemon-Modus inkl. Rollentrennung (`403`) | `engines/localhost_ipc_suite.py` | ✅ DONE |
+| Ketten-Panel, 16 Pads, Record/Loop, Avatar, Transkript, Export, Ketten-Log | `web/index.html`, `web/src/app.js` | ✅ DONE |
+| DOM-freies Kettenmodul (Reducer, Runner, Offline-Dispatcher) | `web/src/action-chain.js` | ✅ DONE |
+| `.cypher`-Export mit Aktionskette + SHA-256 | `engines/session_engine.py` | ✅ DONE |
+| HTTP-Kettentest (236 Checks) | `tests/action_interaction_chain_test.py` | ✅ DONE |
+| Browsermodul-Test offline + live (89 Checks) | `tests/action_chain_ui_test.mjs` | ✅ DONE |
+| Echtes `app.js` mit DOM-Stub gegen Server (93 Checks) | `tests/web_ui_interaction_chain_test.mjs` | ✅ DONE |
+| Zero-Cloud Socket-Monkeypatch-Gate | `tests/zero_cloud_socket_guard_test.py` | ✅ DONE |
+| Parität Browsermodul ↔ Server-Engine | `tests/web_functional_contract_test.py` | ✅ DONE |
+
+Offen innerhalb der Kette:
+
+- [ ] Echte Audio-Capture-Blöcke (Mic/USB/BLE) statt deterministischer Fixtures in `dsp.process` einspeisen.
+- [ ] Ketten-Persistenz über App-Neustarts (Session-Store) und Multi-Client-Sessions.
+- [ ] Streaming-Events (WebSocket/SSE) statt Polling für `/api/events`.
+- [ ] WASM-Build des C++-DSP-Kerns, damit Browser und Native identisch rechnen.
+- [ ] Playwright-basierte UI-Tests zusätzlich zum DOM-Stub-Harness.
+- [ ] Ketten-Replay aus `.cypher` (Re-Import und erneute Ausführung).
 
 ---
 
@@ -231,15 +276,15 @@ Aktuell: ✅ deterministischer Basistest, 🧪 vereinfachte Erkennung.
   - [ ] 3–8 kHz Snare/Clap
   - [ ] 8–16 kHz Hi-Hat/Roll
 - [ ] Pitch detection für Mouth-Bass.
-- [ ] Envelope follower implementieren.
+- [ ] Envelope follower implementieren (aktuell Mean-Abs-/Delta-Energie im Transient-Detektor).
 - [ ] PLL/BPM Sync implementieren.
-- [ ] Quantisierung 1/16 und 1/32.
-- [ ] 808 Oscillator als modulare Voice.
+- [x] Quantisierung 1/16 und 1/32 (`loop.capture` mit `subdivision` 4–64, BPM-Step in `state.transport.loop_step_ms`).
+- [x] 808 Oscillator als modulare Voice (`dsp_chain.synthesize_808`, C++ `synthesize_808`, Pad-Bank A).
 - [ ] Decay, Glide, Saturation UI Parameter.
 - [ ] Sample-Layer Snare/Clap Engine.
 - [ ] Hi-hat noise synth.
 - [ ] Preset-System:
-  - [ ] Boom-Bap
+  - [ ] Boom-Bap (vorhanden: `90s_tape`, `acid_berlin`, `cyber_drill`, `lofi_cypher`)
   - [ ] Drill
   - [ ] Acid Berlin
   - [ ] Lo-Fi
@@ -251,23 +296,24 @@ Aktuell: ✅ deterministischer Basistest, 🧪 vereinfachte Erkennung.
 Aktuell: ✅ Grund-State + Freeze, 🧪 noch keine volle Emulation.
 
 - [ ] Vollständige 4-Engine DSP Chain.
-- [ ] XY Pad Mapping pro Engine.
-- [ ] Freeze pro Engine persistent machen.
-- [ ] Looper Engine implementieren.
+- [x] XY Pad Mapping pro Engine (`kaoss.xy` pro Modul 0-3, Preset-Mapping in `preset.apply`, UI-XY-Pad-Dispatch).
+- [x] Freeze pro Engine innerhalb der Session persistent (`kaoss.freeze`, `held`-Antwort auf frozen XY).
+- [ ] Freeze über App-Neustart/Export-Re-Import persistent machen.
+- [x] Looper Engine implementieren (`loop.capture` ⇒ BPM-quantisierter Loop + Looper-Freeze, deterministische Wiedergabe getestet).
 - [ ] Reverse Loop implementieren.
 - [ ] Slicer mit 8 Slices implementieren.
 - [ ] Grain Pitch implementieren.
-- [ ] Vinyl Break Physikmodell.
+- [~] Vinyl Break: Wow/Flutter + Nadelrauschen im Python-Spiegel (`kaoss.xy` Modul 1), echtes Physikmodell offen.
 - [ ] Tape Scratch.
 - [ ] Flanger Jet.
 - [ ] Ducking Compressor.
 - [ ] Moog-style Ladder Filter.
 - [ ] Vowel/Formant Morph A-E-I-O-U.
-- [ ] Tape Echo mit Wow/Flutter.
+- [~] Tape Echo: Ambience-/Feedback-Term + Wow/Flutter vorhanden, echtes Band-Modell offen.
 - [ ] Ping-Pong Delay.
 - [ ] Dark Hall Reverb.
 - [ ] KP3+ 8x8 LED Matrix UI.
-- [ ] Sample Banks A/B/C/D.
+- [x] Sample Banks A/B/C/D (`pad.trigger` mit 16 Slots, Transient + 808-Voice, UI-Pad-Grid).
 - [ ] Resampling Engine.
 - [ ] Master FX Release Slider.
 - [ ] MIDI Mapping optional.
@@ -464,7 +510,7 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 | Screen | Name | Status | TODO |
 |---|---|---:|---|
 | SCREEN_4 | Tanz-Anlern-Modus | 🧩 TODO | Camera/MoCap UI, Profile Slots A-D |
-| SCREEN_6 | Server Daemon Matrix | ✅ teilweise | Live logs, restart buttons, PID monitor |
+| SCREEN_6 | Server Daemon Matrix | ✅ teilweise | Live logs ✅, chain hits pro Port ✅; restart buttons, PID monitor offen |
 | SCREEN_7 | Multi-Avatar Party | 🧩 TODO | 3D stage, 8 avatar slots, modes |
 | SCREEN_9 | Clean Cypher HUD | 🧩 TODO | Gesture overlays |
 | SCREEN_10 | Funky Live 3D Avatar Cypher | 🧩 TODO | NeuralLift UI + bottom nav |
@@ -479,7 +525,7 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 | SCREEN_22 | Endless Reel Recursion Studio | 🧩 TODO | Tape reel UI and overdubs |
 | SCREEN_23 | Cyber-Transkriptor & Track Vault | 🧩 TODO | Teleprompter, colored rhymes, export |
 | SCREEN_28 | AI Beatbox Session & Musik Agent | 🧩 TODO | Freeform lanes A/B |
-| SCREEN_29 | Kaoss Pad Quad FX Studio | ✅ teilweise | Full 4 FX engines, LED matrix |
+| SCREEN_29 | Kaoss Pad Quad FX Studio | ✅ teilweise | 4 FX-Engines mit XY/Freeze/Looper ✅, Ketten-Panel ✅; 8x8 LED-Matrix offen |
 
 ### 7.4 Plug-&-Play UI spezifisch
 
@@ -595,6 +641,11 @@ Aktuell: Workflows vorhanden, aber viele Schritte bauen Shims oder benötigen Ru
 - [x] Localhost IPC test ports `8080–8085`.
 - [x] Multi-avatar synthetic FPS benchmark.
 - [x] Android permission manifest test.
+- [x] Full action & interaction chain test (HTTP, 236 Checks).
+- [x] Browser chain module test (offline + live server, 89 Checks).
+- [x] Headless UI interaction test mit DOM-Stub (93 Checks).
+- [x] Zero-cloud socket monkeypatch gate.
+- [x] Web/Server chain parity test (Katalog, Skript, Ports, Guards).
 
 ### 10.2 Noch fehlende Tests
 
@@ -607,12 +658,12 @@ Aktuell: Workflows vorhanden, aber viele Schritte bauen Shims oder benötigen Ru
 - [ ] NeuralLift image-to-GLB golden test.
 - [ ] Whisper fixture transcription test.
 - [ ] Rhyme ranking test with 85k DB.
-- [ ] Web UI Playwright tests.
+- [~] Web UI tests: headless DOM-Stub-Harness gegen echten Server vorhanden (`tests/web_ui_interaction_chain_test.mjs`), echte Playwright-Browser-Runs offen.
 - [ ] Accessibility test.
 - [ ] PWA offline install test.
 - [ ] CI release dry-run test.
-- [ ] Zero external network enforcement with socket monkeypatch.
-- [ ] Fuzz tests for malformed IPC payloads.
+- [x] Zero external network enforcement with socket monkeypatch (`tests/zero_cloud_socket_guard_test.py`).
+- [~] Malformed/invalid Aktionen getestet (unbekannte Aktion ⇒ `400`, ungültige Input/Preset/Bank/Slot/Avatar-Mode ⇒ `ERROR`); systematischer Fuzzer offen.
 
 ---
 
@@ -646,9 +697,9 @@ Aktuell: Workflows vorhanden, aber viele Schritte bauen Shims oder benötigen Ru
 - [ ] Löschfunktion für Sessions.
 - [ ] Export-Funktion für lokale Daten.
 - [ ] Permission rationale UI.
-- [ ] Security Review der IPC Endpoints.
-- [ ] Bind nur `127.0.0.1` validieren.
-- [ ] CSRF/Origin Schutz für localhost HTTP prüfen.
+- [~] IPC-Endpoints: Rollentrennung pro Daemon (`403` für fremde Aktionen) implementiert und getestet; formales Review-Dokument offen.
+- [x] Bind nur `127.0.0.1` validieren (Zero-Cloud-Gate prüft `server_address` und blockt Nicht-Loopback-Ziele).
+- [x] CSRF/Origin-Schutz für localhost HTTP (fremder `Origin`/`Referer` auf POST ⇒ `403`, Loopback ⇒ erlaubt, getestet).
 
 ---
 

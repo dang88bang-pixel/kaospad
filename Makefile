@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app run-app run-localhost-ipc clean release-bundle
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud demo-chain run-app run-localhost-ipc clean release-bundle
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -14,7 +14,7 @@ build:
 		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/transient_splitter_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp -o build/transient_splitter_test; \
 	fi
 
-test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app
+test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
@@ -36,6 +36,21 @@ test-web-contract:
 
 test-one-app:
 	python3 tests/one_app_e2e_test.py
+
+test-action-chain:
+	python3 tests/action_interaction_chain_test.py
+
+test-action-chain-ui:
+	node tests/action_chain_ui_test.mjs
+
+test-web-ui-chain:
+	node tests/web_ui_interaction_chain_test.mjs
+
+test-zero-cloud:
+	python3 tests/zero_cloud_socket_guard_test.py
+
+demo-chain:
+	python3 engines/session_engine.py
 
 run-app:
 	python3 app.py

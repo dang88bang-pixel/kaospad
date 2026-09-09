@@ -7,6 +7,8 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -21,6 +23,20 @@ def assert_localhost(host: str) -> None:
 def http_json(path: str) -> dict:
     with urlopen(path, timeout=1.0) as res:  # noqa: S310 local only
         return json.loads(res.read().decode("utf-8"))
+
+
+def post_action(port: int, action: str, **params) -> tuple[int, dict]:
+    request = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/action",
+        data=json.dumps({"action": action, **params}).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=2.0) as res:  # noqa: S310 local only
+            return res.status, json.loads(res.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        return exc.code, json.loads(exc.read().decode("utf-8"))
 
 
 def wait_ready() -> None:
@@ -82,7 +98,65 @@ def main() -> int:
         finally:
             udp.close()
 
-        print("zero-cloud localhost IPC gate passed for ports 8080-8085")
+        # --- gemeinsame Aktionskette über alle Daemons -------------------
+        code, reset = post_action(8080, "chain.reset")
+        assert code == 200 and reset["ok"] is True, reset
+        code, early_glb = post_action(8082, "neurallift.generate", source="too-early.jpg")
+        assert code == 200 and early_glb["status"] == "BLOCKED", early_glb
+        assert early_glb["detail"]["missing_milestones"] == ["avatar.mode"], early_glb["detail"]
+        for action, params in (
+            ("input.select", {"input": "usb_c_audio"}),
+            ("permission.check", {}),
+            ("permission.grant", {"key": "record_audio", "granted": True}),
+            ("audio.start", {"sample_rate_hz": 96000, "frames_per_buffer": 128}),
+            ("mic.arm", {"device_id": "uac2"}),
+        ):
+            code, event = post_action(8080, action, **params)
+            assert code == 200 and event["status"] == "OK", (action, event)
+
+        code, whisper_event = post_action(8085, "transcribe", text="berlin beton sektor")
+        assert code == 200 and whisper_event["status"] == "OK", whisper_event
+        assert whisper_event["engine"] == "whisper" and whisper_event["port"] == 8085, whisper_event
+
+        # avatar.mode gehört zum Avatar-Daemon (8083, TCP) und wird über den
+        # Orchestrator gesetzt; erst danach darf NeuralLift erzeugen.
+        code, avatar_event = post_action(8080, "avatar.mode", mode="CYPHER_CIRCLE")
+        assert code == 200 and avatar_event["status"] == "OK", avatar_event
+
+        code, blocked_glb = post_action(8082, "neurallift.generate", source="frame.jpg")
+        assert code == 200 and blocked_glb["status"] == "OK", blocked_glb
+        glb_event = blocked_glb
+        assert code == 200 and glb_event["status"] == "OK", glb_event
+        assert str(glb_event["detail"]["glb"]).endswith(".glb"), glb_event["detail"]
+
+        # Rollen-Trennung: Whisper darf keine DSP-Aktion ausführen.
+        code, denied = post_action(8085, "dsp.process", signal="hat")
+        assert code == 403 and denied["ok"] is False, denied
+        assert denied["serve_on_port"] == 8084, denied
+
+        # UDP-Bridge fährt einen echten DSP-Block durch die Kette.
+        udp = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            udp.settimeout(1.0)
+            udp.sendto(b"hat", ("127.0.0.1", 8084))
+            dsp = json.loads(udp.recvfrom(512)[0].decode("utf-8"))
+            assert dsp["hat"] is True and dsp["transient"] == "HAT_ROLL", dsp
+            assert dsp["output_peak_dbfs"] <= -3.2 + 1e-6, dsp
+        finally:
+            udp.close()
+
+        state = http_json("http://127.0.0.1:8080/api/state")
+        assert state["input"]["selected"] == "usb_c_audio", state["input"]
+        assert state["audio"]["mic_armed"] is True, state["audio"]
+        assert state["dsp"]["blocks"] >= 1 and state["dsp"]["hat"] >= 1, state["dsp"]
+        assert state["chain"]["length"] >= 8, state["chain"]
+        assert state["chain"]["blocked"] == 1, state["chain"]
+        assert "whisper" in {item["engine"] for item in http_json("http://127.0.0.1:8080/api/events?since=0")["events"]}
+
+        mesh_after = http_json("http://127.0.0.1:8082/mesh/default")
+        assert mesh_after["generated_from"] == "frame.jpg", mesh_after
+
+        print("zero-cloud localhost IPC gate passed for ports 8080-8085 (shared action chain)")
         return 0
     finally:
         proc.terminate()
