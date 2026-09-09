@@ -409,6 +409,12 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json(self.action_response(ENGINE.dispatch(action, params, strict=strict)))
             return
 
+        if path in {"/api/session/import", "/session/import"}:
+            payload = params.get("session") if isinstance(params.get("session"), dict) else params
+            report = ENGINE.replay_cypher(payload if isinstance(payload, dict) else {})
+            self.send_json({"ok": report["ok"], "replay": report})
+            return
+
         if path in {"/api/chain/run", "/chain/run"}:
             script = params.get("script")
             steps = script if isinstance(script, list) else [dict(step) for step in FULL_CHAIN_SCRIPT]

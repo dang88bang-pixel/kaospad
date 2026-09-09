@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud demo-chain run-app run-localhost-ipc clean release-bundle
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -48,6 +48,9 @@ test-web-ui-chain:
 
 test-zero-cloud:
 	python3 tests/zero_cloud_socket_guard_test.py
+
+test-session-store:
+	python3 tests/session_persist_replay_test.py
 
 demo-chain:
 	python3 engines/session_engine.py

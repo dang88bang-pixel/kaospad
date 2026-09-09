@@ -32,6 +32,7 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "dist" / "offline-rhymes.sqlite3"
+SESSION_STORE = ROOT / "dist" / "sessions"
 
 # Importable both as top-level module (engines/ on sys.path) and via package path.
 for _path in (str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parent / "whisper_offline")):
@@ -688,7 +689,42 @@ class SessionEngine:
 
     def _do_session_export(self, params: dict[str, Any]) -> dict[str, Any]:
         payload = self.export_payload()
-        return {"session": payload, "checksum": payload["checksum"], "chain_length": payload["chain_length"]}
+        persist = bool(params.get("persist", True))
+        path = None
+        if persist:
+            path = self.persist_session(payload)
+        return {
+            "session": payload,
+            "checksum": payload["checksum"],
+            "chain_length": payload["chain_length"],
+            "persisted": str(path) if path else None,
+        }
+
+    def persist_session(self, payload: dict[str, Any] | None = None) -> Path:
+        SESSION_STORE.mkdir(parents=True, exist_ok=True)
+        body = payload or self.export_payload()
+        path = SESSION_STORE / f"{body['checksum'][:16]}.cypher.json"
+        path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+        latest = SESSION_STORE / "latest.cypher.json"
+        latest.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        return path
+
+    def load_session(self, path: Path | None = None) -> dict[str, Any]:
+        target = Path(path) if path else SESSION_STORE / "latest.cypher.json"
+        return json.loads(target.read_text(encoding="utf-8"))
+
+    def replay_cypher(self, payload: dict[str, Any], strict: bool = True) -> dict[str, Any]:
+        """Re-run the exported action names (canonical script if chain missing)."""
+        chain = payload.get("action_chain") or []
+        script = []
+        for event in chain:
+            action = event.get("action")
+            if action and action != "boot":
+                script.append({"action": action})
+        if not script:
+            script = [dict(step) for step in FULL_CHAIN_SCRIPT]
+        self.dispatch("boot", {}, strict=False)
+        return self.run_script(script, strict=strict)
 
     def _do_chain_reset(self, params: dict[str, Any]) -> dict[str, Any]:
         with self._lock:

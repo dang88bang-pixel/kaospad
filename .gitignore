@@ -1,5 +1,8 @@
 build/
 dist/
+android/local.properties
+android/.gradle/
+android/app/build/
 target/
 node_modules/
 *.log

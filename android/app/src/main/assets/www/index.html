@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#111318" />
+  <title>Korg Kaoss AI Beatbox Studio</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="stylesheet" href="./src/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <p class="eyebrow">Berlin Underground 1998–2026 // Offline PWA</p>
+      <h1>Korg Kaoss Pad & AI Beatbox Studio</h1>
+      <p>One-touch Cypher, Mund-Bass zu 808, Quad-FX und NeuralLift-360 Avatar Stage – alles localhost-first, ohne Cloud.</p>
+    </section>
+    <section class="grid">
+      <article><span>● USB-C 96K</span><strong>1.2 ms LOCKED</strong><small>-3.2 dBFS SAFE</small></article>
+      <article><span>DRÜCK & LABER</span><strong>Live Vocal</strong><small>Whisper offline + Reim-Matrix</small></article>
+      <article><span>MUND-BASS</span><strong>808 Transmuter</strong><small>20–90 Hz transient split</small></article>
+      <article><span>KAOSS QUAD</span><strong>4x Freeze FX</strong><small>Looper, Vinyl, Filter, Tape Echo</small></article>
+    </section>
+
+    <section class="runtime-panel" aria-labelledby="runtime-title">
+      <div>
+        <p class="eyebrow">Auto Port Loader // One App Runtime</p>
+        <h2 id="runtime-title">Port automatisch geladen & verfügbar</h2>
+        <p>Die Anwendung erkennt ihren aktuellen Host/Port automatisch, lädt die Runtime-Konfiguration und bindet alle APIs relativ zur laufenden App ein.</p>
+      </div>
+      <div class="runtime-grid">
+        <article><span>APP PORT</span><strong id="runtime-port">AUTO</strong><small id="runtime-base">loading…</small></article>
+        <article><span>ZERO CLOUD</span><strong id="runtime-cloud">LOCKED</strong><small>relative API routing</small></article>
+        <article><span>ENDPOINTS</span><strong id="runtime-endpoints">0</strong><small>loaded from /api/runtime</small></article>
+      </div>
+    </section>
+
+    <section class="native-bridge" aria-labelledby="portview-title">
+      <div>
+        <p class="eyebrow">Native Bridge PortView // AUTO</p>
+        <h2 id="portview-title">Regel-Matrix via Native Bridge</h2>
+        <p>Die Ansicht schaltet automatisch auf die native Bridge, sobald sie vom Android/Desktop-Host injiziert wird. Im Browser bleibt sie zero-cloud als sichere Localhost-Simulation sichtbar.</p>
+      </div>
+      <div class="bridge-actions">
+        <button id="portview-auto" type="button">PORTVIEW AUTO REGELN</button>
+        <output id="bridge-mode">BRIDGE: AUTO-SCAN</output>
+      </div>
+      <div class="port-grid" id="port-grid"></div>
+    </section>
+
+    <section class="io-matrix" aria-labelledby="io-title">
+      <div>
+        <p class="eyebrow">Plug & Play Audio I/O // USB · Mic · Bluetooth</p>
+        <h2 id="io-title">Eingang wählen & Berechtigungen prüfen</h2>
+        <p>Auto-Adaption für USB-C Interface, internes Mikrofon oder Bluetooth-Client. Status, Latenz, Route und Berechtigungen werden direkt in der Ansicht angezeigt.</p>
+      </div>
+      <div class="io-controls">
+        <label for="input-select">Input Source</label>
+        <select id="input-select">
+          <option value="usb_c_audio">USB-C Audio Interface</option>
+          <option value="internal_mic" selected>Internes Mikrofon</option>
+          <option value="bluetooth_client">Bluetooth Client / BLE Mic</option>
+        </select>
+        <button id="permission-check" type="button">BERECHTIGUNGEN PRÜFEN</button>
+        <output id="permission-mode">PERMISSION: AUTO</output>
+      </div>
+      <div class="device-grid" id="device-grid"></div>
+      <div class="permission-grid" id="permission-grid"></div>
+    </section>
+
+    <section class="kaoss-console" aria-labelledby="console-title">
+      <div>
+        <p class="eyebrow">Kaoss Quad Console // Presets · Freeze · Vault</p>
+        <h2 id="console-title">Vier FX-Engines & Session Export</h2>
+        <p>Eine Bedienfläche für Live-Presets, vier Freeze-Module, Sample-Bänke A-D, Logs und lokalen `.cypher` Export.</p>
+      </div>
+      <div class="console-controls">
+        <label for="preset-select">Theme Preset</label>
+        <select id="preset-select">
+          <option value="90s_tape">90s Tape Reel</option>
+          <option value="acid_berlin">Acid Berlin</option>
+          <option value="cyber_drill">Cyber Drill</option>
+          <option value="lofi_cypher">Lo-Fi Cypher</option>
+        </select>
+        <button id="apply-preset" type="button">PRESET LADEN</button>
+        <button id="export-session" type="button">.CYPHER EXPORT</button>
+        <output id="vault-state">VAULT: READY</output>
+      </div>
+      <div class="fx-grid" id="fx-grid">
+        <button class="freeze" data-module="0" type="button">FX1 LOOPER<br><span>FREEZE OFF</span></button>
+        <button class="freeze" data-module="1" type="button">FX2 VINYL<br><span>FREEZE OFF</span></button>
+        <button class="freeze" data-module="2" type="button">FX3 FILTER<br><span>FREEZE OFF</span></button>
+        <button class="freeze" data-module="3" type="button">FX4 TAPE ECHO<br><span>FREEZE OFF</span></button>
+      </div>
+      <div class="bank-grid" id="bank-grid"></div>
+      <pre class="live-log" id="live-log">BOOT // waiting for one-app logs</pre>
+    </section>
+
+    <section class="live-engine" aria-labelledby="engine-title">
+      <div>
+        <p class="eyebrow">Funktionsbereit // Browser Audio Engine</p>
+        <h2 id="engine-title">Live Audio starten, Mic armen, 808 testen</h2>
+        <p>Direkt ausführbarer WebAudio-Pfad: Mikrofonberechtigung anfordern, echtes Audioinput-Device wählen, 808/Snare triggern und XY-Pad als Filter/Delay steuern.</p>
+      </div>
+      <div class="engine-controls">
+        <button id="start-audio" type="button">AUDIO STARTEN</button>
+        <button id="arm-mic" type="button">MIC ARMEN</button>
+        <button id="trigger-808" type="button">808 TEST</button>
+        <button id="trigger-snare" type="button">SNARE TEST</button>
+        <select id="browser-device-select" aria-label="Browser Audio Eingangsgerät">
+          <option value="">Default Browser Input</option>
+        </select>
+        <output id="audio-state">AUDIO: STANDBY</output>
+      </div>
+      <div class="meter-wrap">
+        <div class="meter-bar"><span id="meter-fill"></span></div>
+        <output id="meter-readout">PEAK: -120 dBFS</output>
+      </div>
+      <div class="quick-rhymes">
+        <input id="rhyme-word" value="beton" aria-label="Reimwort" />
+        <button id="lookup-rhyme" type="button">REIME LADEN</button>
+        <output id="rhyme-output">BETON · SEKTOR · DÄMON</output>
+      </div>
+    </section>
+
+    <section class="chain-panel" aria-labelledby="chain-title">
+      <div>
+        <p class="eyebrow">Aktions- &amp; Interaktionskette // One App State Engine</p>
+        <h2 id="chain-title">Vollständige Kette: Input → DSP → Loop → Export</h2>
+        <p>Jeder Klick, jede Pad-Berührung und jede XY-Bewegung wird als Aktion mit Sequenznummer, Engine-Port, Latenz und Status an die lokale State-Engine übergeben. Falsche Reihenfolge wird als <code>BLOCKED</code> quittiert, statt still zu succeedieren.</p>
+      </div>
+      <div class="chain-controls">
+        <button id="run-full-chain" type="button">VOLLSTÄNDIGE KETTE AUSFÜHREN</button>
+        <button id="chain-reset" type="button" class="ghost">KETTE RESET</button>
+        <label class="toggle" for="chain-strict"><input id="chain-strict" type="checkbox" checked /> strict (Reihenfolge erzwingen)</label>
+        <output id="chain-state">CHAIN: IDLE</output>
+      </div>
+      <div class="chain-grid">
+        <article><span>SCHRITTE</span><strong id="chain-length">0</strong><small id="chain-seq">seq 0</small></article>
+        <article><span>BLOCKED</span><strong id="chain-blocked">0</strong><small>out-of-order guard</small></article>
+        <article><span>LATENZ MAX</span><strong id="chain-latency">0.000 ms</strong><small id="chain-total">total 0.000 ms</small></article>
+        <article><span>PEAK</span><strong id="state-peak">-120.0 dBFS</strong><small id="state-limiter">limiter -3.2 dBFS</small></article>
+        <article><span>INPUT</span><strong id="state-input">internal_mic</strong><small id="state-route">route standby</small></article>
+        <article><span>TRANSPORT</span><strong id="state-transport">STOP</strong><small id="state-bpm">92.4 BPM</small></article>
+        <article><span>FREEZE</span><strong id="state-freeze">0/4</strong><small id="state-loop">loop 0 frames</small></article>
+        <article><span>AVATAR</span><strong id="state-avatar">CYPHER_CIRCLE</strong><small id="state-glb">procedural_default_avatar.glb</small></article>
+      </div>
+      <div class="chain-actions">
+        <div class="transport">
+          <button id="record-toggle" type="button">RECORD START</button>
+          <button id="loop-capture" type="button" class="ghost">LOOP CAPTURE 1/16</button>
+          <output id="transport-state">TRANSPORT: IDLE</output>
+        </div>
+        <div class="avatar-controls">
+          <label for="avatar-mode">Avatar Stage</label>
+          <select id="avatar-mode">
+            <option value="CYPHER_CIRCLE" selected>Cypher Circle (8 Avatare)</option>
+            <option value="PARTY_8">Multi-Avatar Party</option>
+            <option value="SOLO_HUD">Clean Cypher HUD (Solo)</option>
+            <option value="TANZ_ANLERNEN">Tanz-Anlern-Modus</option>
+            <option value="ENDLESS_REEL">Endless Reel Recursion</option>
+          </select>
+          <button id="avatar-apply" type="button" class="ghost">MODUS SETZEN</button>
+          <button id="neurallift-run" type="button" class="ghost">GLB GENERIEREN</button>
+          <output id="avatar-state">AVATAR: CYPHER_CIRCLE // 60 FPS</output>
+        </div>
+        <div class="lyrics-controls">
+          <label for="transcribe-input">Drück &amp; laber</label>
+          <input id="transcribe-input" value="drück und laber beton sektor dämon" aria-label="Transkript Text" />
+          <button id="transcribe-run" type="button" class="ghost">TRANSKRIBIEREN + REIME</button>
+          <output id="transcribe-output">OFFLINE WHISPER SHIM READY</output>
+        </div>
+      </div>
+      <div class="pad-section">
+        <p class="eyebrow">Sample Bänke A–D // Ketten-Trigger</p>
+        <div class="pad-grid" id="pad-grid"></div>
+      </div>
+      <pre class="chain-log" id="action-chain-log">CHAIN // noch keine Aktion – starte die vollständige Kette</pre>
+    </section>
+
+    <section class="pad" id="xy-pad" aria-label="Kaoss XY Touch Pad">
+      <div class="orb"></div>
+      <output class="xy-readout" id="xy-readout">XY 0.50 / 0.50 // MODULE 2+3</output>
+    </section>
+    <section class="daemon" id="daemon"></section>
+  </main>
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>
