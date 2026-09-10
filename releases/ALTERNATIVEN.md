@@ -19,4 +19,10 @@ Vollständiges Payload der APK:
 - Android-Quellen unter `assets/android-src/`
 - Signatur RSA-2048, Zertifikat `android/signing/kaoss-release-cert.pem`
 
+<<<<<<< HEAD
 Wenn SDK erreichbar ist: `android/gradlew assembleRelease` + dasselbe Keystore ersetzen `apksigner`.
+=======
+Cloud-Build (ohne lokales SDK): GitHub Action `Android signed APK (cloud SDK)` → Artifact `KaossBeatboxStudio-v5.0.0-cloud-signed`.
+
+Wenn SDK lokal erreichbar ist: `gradle -p android :app:assembleRelease` (Wrapper-JAR fehlt hier; CI nutzt `gradle/actions/setup-gradle`).
+>>>>>>> 34c5fbf (Add GitHub Actions cloud assembleRelease for a real signed APK.)
