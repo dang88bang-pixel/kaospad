@@ -1,5 +1,10 @@
 build/
 dist/
+android/local.properties
+android/.gradle/
+android/app/build/
+android/signing/*-key.pem
+android/signing/*.der
 target/
 node_modules/
 *.log

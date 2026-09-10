@@ -13,6 +13,10 @@ DEFAULT_ROWS = [
     ("kaoss", "aʊs", "raus,haus,applaus,maus,brauchs"),
     ("berlin", "ɪn", "termin,gewinn,benzin,magazin,ramin"),
     ("cypher", "aɪfɐ", "eifer,greifer,schleifer,streifer,live-er"),
+    ("neon", "eːɔn", "beton,dämon,neon,phonon,patron"),
+    ("flow", "oː", "show,go,slow,throw,outro"),
+    ("bunker", "ʊŋkɐ", "funk-er,unker,punker,dunkler"),
+    ("pad", "at", "hat,splat,flat,beat-hat"),
 ]
 
 
@@ -39,7 +43,8 @@ def lookup(path: Path, word: str) -> list[str]:
     if row:
         return [item.strip().upper() for item in row[0].split(",") if item.strip()]
     tail = normalized[-3:] if len(normalized) >= 3 else normalized
-    return [w.upper() for w, _, _ in DEFAULT_ROWS if w.endswith(tail)][:5] or ["BETON", "SEKTOR", "DÄMON"]
+    matches = [w.upper() for w, _, _ in DEFAULT_ROWS if w.endswith(tail) or normalized.endswith(w[-2:])]
+    return matches[:8]
 
 
 def main() -> None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 MODELS = {
@@ -20,11 +21,20 @@ def main() -> None:
     args = parser.parse_args()
     target = Path(args.target)
     target.mkdir(parents=True, exist_ok=True)
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "whisper_offline"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from tflite_runtime import ensure_int8_weights
+    from midas import ensure_midas_weights
+
+    ensure_int8_weights(target / "whisper-tiny-multilingual-int8.tflite")
+    ensure_midas_weights()
     manifest = []
     for name, payload in MODELS.items():
-        data = payload.encode("utf-8")
         path = target / name
-        path.write_bytes(data)
+        if not path.exists():
+            data = payload.encode("utf-8")
+            path.write_bytes(data)
+        data = path.read_bytes()
         manifest.append({"file": name, "sha256": hashlib.sha256(data).hexdigest(), "bytes": len(data)})
     (target / "MODELS.offline.json").write_text(json.dumps({"offline": True, "models": manifest}, indent=2), encoding="utf-8")
     print(f"prepared {len(manifest)} offline model placeholders in {target}")

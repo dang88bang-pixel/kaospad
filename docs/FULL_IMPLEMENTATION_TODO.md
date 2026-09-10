@@ -101,8 +101,8 @@ Vollständig implementiert und getestet ist die durchgängige Kette
 Offen innerhalb der Kette:
 
 - [ ] Echte Audio-Capture-Blöcke (Mic/USB/BLE) statt deterministischer Fixtures in `dsp.process` einspeisen.
-- [ ] Ketten-Persistenz über App-Neustarts (Session-Store) und Multi-Client-Sessions.
-- [ ] Streaming-Events (WebSocket/SSE) statt Polling für `/api/events`.
+- [x] Ketten-Persistenz über App-Neustarts (Session-Store `dist/sessions/*.cypher.json` + `/api/session/latest`).
+- [x] Streaming-Events (SSE `/api/events/stream`) zusätzlich zu Polling für `/api/events`.
 - [ ] WASM-Build des C++-DSP-Kerns, damit Browser und Native identisch rechnen.
 - [ ] Playwright-basierte UI-Tests zusätzlich zum DOM-Stub-Harness.
 - [ ] Ketten-Replay aus `.cypher` (Re-Import und erneute Ausführung).
@@ -552,11 +552,11 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 Aktuell: 🧪 Scaffold-Artefakte.
 
 - [ ] Offiziellen Gradle Wrapper erzeugen und committen.
-- [ ] Kotlin/Java MainActivity vollständig.
-- [ ] Native Library laden.
-- [ ] JNI Bridge für DSP.
+- [x] Kotlin/Java MainActivity vollständig (WebView + JS Bridge).
+- [x] Native Library laden (`System.loadLibrary("kaoss_native")`).
+- [x] JNI Bridge für DSP (`kaoss_jni.cpp`: pipe, limiter, transient).
 - [ ] JNI Bridge für Device Matrix.
-- [ ] Runtime Permissions UI.
+- [x] Runtime Permissions UI (RECORD_AUDIO / Bluetooth 12+).
 - [ ] Foreground Audio Service.
 - [ ] Release Signing konfigurieren.
 - [ ] AAB Build real validieren.
@@ -740,9 +740,9 @@ Zielnamen aus Spezifikation:
 
 ### Phase A – Ehrliche Beta lauffähig machen
 
-1. [ ] Android echten Gradle Wrapper hinzufügen.
-2. [ ] Android JNI Bridge zwischen UI und C++ DSP bauen.
-3. [ ] Android Runtime Permissions UI für Mic/Bluetooth/USB implementieren.
+1. [~] Android Gradle Wrapper Properties + Gradle-Skript vorhanden; offizielles `gradle-wrapper.jar` folgt mit JDK.
+2. [x] Android JNI Bridge zwischen UI und C++ DSP bauen.
+3. [x] Android Runtime Permissions UI für Mic/Bluetooth/USB implementieren.
 4. [ ] AudioRecord/AAudio Input wirklich an DSP anschließen.
 5. [ ] WebAudio/WASM Fallback für Browser implementieren.
 6. [ ] UI Screens SCREEN_14, SCREEN_29, SCREEN_6 fertigstellen.

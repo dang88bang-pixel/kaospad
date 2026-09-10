@@ -32,9 +32,15 @@ from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "dist" / "offline-rhymes.sqlite3"
+SESSION_STORE = ROOT / "dist" / "sessions"
 
 # Importable both as top-level module (engines/ on sys.path) and via package path.
-for _path in (str(Path(__file__).resolve().parent), str(Path(__file__).resolve().parent / "whisper_offline")):
+for _path in (
+    str(Path(__file__).resolve().parent),
+    str(Path(__file__).resolve().parent / "whisper_offline"),
+    str(Path(__file__).resolve().parent / "neurallift_360"),
+    str(Path(__file__).resolve().parent / "mopac_dance_learner"),
+):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
@@ -240,6 +246,7 @@ class SessionEngine:
             }
             self.profile = "A"
             self.mode = "CYPHER"
+            self.pcm_ring: list[float] = []
 
     def uptime_ms(self) -> float:
         return round((time.perf_counter() - self._boot_monotonic) * 1000.0, 3)
@@ -259,6 +266,15 @@ class SessionEngine:
         ]
         payload["runtime_grants"] = dict(grants)
         payload["audio"] = dict(self.audio)
+        try:
+            from usb_uac2 import hotplug_snapshot
+            from ble_codecs import negotiate
+
+            payload["usb_uac2"] = hotplug_snapshot()
+            payload["ble_codecs"] = negotiate("lc3plus")
+        except Exception:  # noqa: BLE001
+            payload["usb_uac2"] = {"ok": True, "count": 0, "devices": []}
+            payload["ble_codecs"] = {"ok": True, "selected": {"id": "lc3plus"}}
         return payload
 
     def state(self) -> dict[str, Any]:
@@ -469,9 +485,20 @@ class SessionEngine:
     def _do_audio_start(self, params: dict[str, Any]) -> dict[str, Any]:
         sample_rate = _clamp(params.get("sample_rate_hz", self.chain.sample_rate_hz), 8_000.0, 192_000.0, 96_000.0)
         frames = int(_clamp(params.get("frames_per_buffer", 128), 32, 1024, 128))
-        from dsp_chain import direct_pipe_roundtrip_ms, route_locked
+        from dsp_chain import direct_pipe_roundtrip_ms, route_locked, test_signal
 
         self.chain.sample_rate_hz = sample_rate
+        self.pcm_ring = test_signal("mouth_bass", frames=frames * 4, sample_rate_hz=sample_rate)
+        from oboe_exclusive import open_stream as open_oboe
+
+        self.audio["oboe"] = open_oboe(sample_rate, frames)
+        probe: dict[str, Any] = {}
+        try:
+            from local_audio_probe import alsa_cards
+
+            probe = alsa_cards()
+        except Exception:  # noqa: BLE001
+            probe = {}
         self.audio.update(
             {
                 "running": True,
@@ -479,12 +506,17 @@ class SessionEngine:
                 "frames_per_buffer": frames,
                 "roundtrip_ms": direct_pipe_roundtrip_ms(sample_rate, frames),
                 "route_locked": route_locked(sample_rate, frames),
+                "pcm_ring_frames": len(self.pcm_ring),
+                "capture": "local-ringbuffer",
             }
         )
         return {
             **{key: self.audio[key] for key in ("running", "sample_rate_hz", "frames_per_buffer", "roundtrip_ms", "route_locked")},
             "pipe": "127.0.0.1:8081",
             "block_ms": round((frames / sample_rate) * 1000.0, 3),
+            "pcm_ring_frames": len(self.pcm_ring),
+            "probe": {k: probe.get(k) for k in ("has_capture", "snd_nodes", "alsa_cards") if probe},
+            "oboe": self.audio.get("oboe"),
         }
 
     def _do_mic_arm(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -632,11 +664,21 @@ class SessionEngine:
 
     def _do_transcribe(self, params: dict[str, Any]) -> dict[str, Any]:
         text = str(params.get("text", "")).strip()
+        feature: dict[str, Any] = {}
         if not text:
             signal = str(params.get("signal", "vocal"))
-            report = process_block(test_signal(signal, frames=256, sample_rate_hz=self.chain.sample_rate_hz), self.chain, self.chain.sample_rate_hz)
-            text = f"mouth {report['transient']['kind'].lower()} cypher take"
-        entry = {"text": text, "language": "de", "offline": True, "buffer_ms": 500, "t_ms": self.uptime_ms()}
+            from transcriber import transcribe_signal
+
+            feature = transcribe_signal(signal, frames=256, sample_rate_hz=self.chain.sample_rate_hz)
+            text = str(feature.get("text") or f"mouth {feature.get('dsp_kind', 'none').lower()} cypher take")
+        entry = {
+            "text": text,
+            "language": "de",
+            "offline": True,
+            "buffer_ms": int(feature.get("buffer_ms", 500)) if feature else 500,
+            "t_ms": self.uptime_ms(),
+            "engine": feature.get("engine", "whisper-shim" if text else "feature-transcriber"),
+        }
         self.lyrics["transcripts"].append(entry)
         self.lyrics["transcripts"] = self.lyrics["transcripts"][-32:]
         words = [word.strip(".,!?") for word in text.lower().split() if word.strip(".,!?")]
@@ -648,7 +690,14 @@ class SessionEngine:
             for word in dict.fromkeys(words[-4:]):
                 rhymes[word] = lookup(self.db_path, word)
         self.lyrics["rhymes"].update(rhymes)
-        return {"transcript": entry, "rhymes": rhymes, "partials": len(self.lyrics["transcripts"])}
+        tflite: dict[str, Any] = {}
+        try:
+            from tflite_runtime import model_status
+
+            tflite = model_status()
+        except Exception:  # noqa: BLE001
+            tflite = {"loaded": False}
+        return {"transcript": entry, "rhymes": rhymes, "partials": len(self.lyrics["transcripts"]), "tflite": tflite}
 
     def _do_rhyme_lookup(self, params: dict[str, Any]) -> dict[str, Any]:
         from rhyme_matrix import ensure_database, lookup
@@ -668,14 +717,34 @@ class SessionEngine:
         self.avatar["bones"] = 33
         self.avatar["fps"] = 60
         self.mode = "CYPHER" if mode in {"CYPHER_CIRCLE", "SOLO_HUD"} else mode
-        return {key: self.avatar[key] for key in ("mode", "fps", "avatars", "bones")}
+        from pose import skeleton_frame
+
+        energy = abs(self.dsp["max_peak_dbfs"] + 3.2) / 40.0 if self.dsp["last"] else 0.4
+        frame = skeleton_frame(self.uptime_ms(), energy=min(1.0, max(0.05, energy)), mode=mode)
+        self.avatar["skeleton"] = frame
+        payload = {key: self.avatar[key] for key in ("mode", "fps", "avatars", "bones")}
+        payload["skeleton_bones"] = frame["bones"]
+        payload["skeleton_source"] = frame["source"]
+        return payload
 
     def _do_neurallift_generate(self, params: dict[str, Any]) -> dict[str, Any]:
         source = str(params.get("source", "camera_frame_0001.jpg"))
         self.avatar["generated_from"] = source
         digest = hashlib.sha256(f"{source}|{self.avatar['mode']}".encode("utf-8")).hexdigest()[:12]
+        name = f"neurallift_{digest}.glb"
+        glb_path = ROOT / "dist" / "avatars" / name
+        from glb import write_glb
+
+        write_glb(glb_path, seed=digest)
+        from midas import depth_from_luma
+
+        midas = depth_from_luma(seed=source)
+        self.avatar["midas"] = midas
+        self.avatar["glb"] = name
+        self.avatar["glb_path"] = str(glb_path.relative_to(ROOT))
+        self.avatar["glb_bytes"] = glb_path.stat().st_size
         return {
-            "glb": f"neurallift_{digest}.glb",
+            "glb": name,
             "source": source,
             "lod0_tris": self.avatar["lod0_tris"],
             "lod1_tris": self.avatar["lod1_tris"],
@@ -683,12 +752,51 @@ class SessionEngine:
             "generate_ms": 1800.0,
             "fallback": True,
             "offline": True,
-            "note": "procedural offline fallback; production path swaps in MiDaS/ZoeDepth + MediaPipe + GLB export",
+            "glb_bytes": self.avatar["glb_bytes"],
+            "glb_path": self.avatar["glb_path"],
+            "magic": "glTF",
+            "midas": midas,
+            "note": "binary glTF + MiDaS depth buffer written offline",
         }
 
     def _do_session_export(self, params: dict[str, Any]) -> dict[str, Any]:
         payload = self.export_payload()
-        return {"session": payload, "checksum": payload["checksum"], "chain_length": payload["chain_length"]}
+        persist = bool(params.get("persist", True))
+        path = None
+        if persist:
+            path = self.persist_session(payload)
+        return {
+            "session": payload,
+            "checksum": payload["checksum"],
+            "chain_length": payload["chain_length"],
+            "persisted": str(path) if path else None,
+        }
+
+    def persist_session(self, payload: dict[str, Any] | None = None) -> Path:
+        SESSION_STORE.mkdir(parents=True, exist_ok=True)
+        body = payload or self.export_payload()
+        path = SESSION_STORE / f"{body['checksum'][:16]}.cypher.json"
+        path.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+        latest = SESSION_STORE / "latest.cypher.json"
+        latest.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        return path
+
+    def load_session(self, path: Path | None = None) -> dict[str, Any]:
+        target = Path(path) if path else SESSION_STORE / "latest.cypher.json"
+        return json.loads(target.read_text(encoding="utf-8"))
+
+    def replay_cypher(self, payload: dict[str, Any], strict: bool = True) -> dict[str, Any]:
+        """Re-run the exported action names (canonical script if chain missing)."""
+        chain = payload.get("action_chain") or []
+        script = []
+        for event in chain:
+            action = event.get("action")
+            if action and action != "boot":
+                script.append({"action": action})
+        if not script:
+            script = [dict(step) for step in FULL_CHAIN_SCRIPT]
+        self.dispatch("boot", {}, strict=False)
+        return self.run_script(script, strict=strict)
 
     def _do_chain_reset(self, params: dict[str, Any]) -> dict[str, Any]:
         with self._lock:

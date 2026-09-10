@@ -1,3 +1,5 @@
+//! Tauri host re-exports the same routing matrix as `desktop/src/audio_host.rs`.
+
 #[derive(Debug, Clone)]
 pub struct AudioHost {
     pub sample_rate_hz: u32,
@@ -10,10 +12,14 @@ impl Default for AudioHost {
         let backend = if cfg!(target_os = "macos") {
             "CoreAudio"
         } else if cfg!(target_os = "windows") {
-            "ASIO/DirectSound"
+            "WASAPI/ASIO"
         } else {
             "ALSA/PipeWire/JACK"
         };
-        Self { sample_rate_hz: 96_000, frames_per_buffer: 128, low_latency_backend: backend }
+        Self {
+            sample_rate_hz: 96_000,
+            frames_per_buffer: 128,
+            low_latency_backend: backend,
+        }
     }
 }

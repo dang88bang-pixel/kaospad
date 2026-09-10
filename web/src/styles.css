@@ -17,6 +17,7 @@ output { padding:12px 14px; border-radius:999px; border:1px solid #00f5d455; col
 .port-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; }
 .port-card { min-height:190px; background:linear-gradient(180deg, #202631, #151922); }
 .port-card.locked { border-color:#30ff8a88; box-shadow:0 0 22px #30ff8a18 inset; }
+.port-card.active { border-color:var(--amber); box-shadow:0 0 28px #ff7a0044; }
 .port-card.reserved { border-color:#ffd16666; }
 .port-head { display:flex; justify-content:space-between; align-items:center; font-family:ui-monospace, monospace; }
 .port-head b { color:var(--ok); }
