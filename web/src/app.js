@@ -202,9 +202,23 @@ async function dispatchAction(action, params = {}) {
       server_state: payload.state,
     };
     chainState.offlineFallback = false;
-  } catch {
-    event = offlineDispatch(action, params);
-    chainState.offlineFallback = true;
+  } catch (error) {
+    if (location.protocol === 'file:') {
+      event = offlineDispatch(action, params);
+      chainState.offlineFallback = true;
+    } else {
+      event = {
+        seq: chainState.seq + 1,
+        action,
+        engine: request.engine,
+        port: request.port,
+        status: 'ERROR',
+        ok: false,
+        latency_ms: 0,
+        detail: { error: String(error.message || error), live: true },
+      };
+      chainState.offlineFallback = false;
+    }
   }
   chainState = chainReducer(chainState, event);
   renderChain(event);

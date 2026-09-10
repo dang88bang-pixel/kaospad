@@ -577,7 +577,13 @@ def main() -> int:
         print(f"Action chain pre-run: {report['steps']} steps ok={report['ok']} blocked={report['blocked']}", flush=True)
     mimetypes.add_type("application/manifest+json", ".webmanifest")
     port = resolve_port(args.host, str(args.port))
-    server = ThreadingHTTPServer((args.host, port), OneAppHandler)
+
+    class KaossServer(ThreadingHTTPServer):
+        daemon_threads = True
+        request_queue_size = 128
+        allow_reuse_address = True
+
+    server = KaossServer((args.host, port), OneAppHandler)
     print(f"Kaoss One App ready: http://{args.host}:{port}/", flush=True)
     print(f"POST actions: {len(POST_ROUTES) + 2} routes // chain catalogue: {len(ACTION_CATALOGUE)} actions", flush=True)
     server.serve_forever()

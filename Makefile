@@ -39,6 +39,8 @@ test-one-app:
 
 test-action-chain:
 	python3 tests/action_interaction_chain_test.py
+	python3 tests/functional_execution_audit_test.py
+	python3 tests/stress_error_resilience_test.py
 
 test-action-chain-ui:
 	node tests/action_chain_ui_test.mjs

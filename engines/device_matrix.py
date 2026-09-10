@@ -67,9 +67,9 @@ def devices(selected: InputKind = "internal_mic") -> list[DeviceSpec]:
             "Internes Mikrofon",
             "LOCKED" if selected == "internal_mic" else "AVAILABLE",
             48_000,
-            "24-bit capture shim",
+            "24-bit float",
             2.6,
-            "Android AudioRecord / CoreAudio default input",
+            "AudioRecord / default input",
             True,
             ("record_audio",),
         ),
@@ -78,9 +78,9 @@ def devices(selected: InputKind = "internal_mic") -> list[DeviceSpec]:
             "Bluetooth Client / BLE Mic",
             "LOCKED" if selected == "bluetooth_client" else "PAIRABLE",
             48_000,
-            "LC3plus shim",
+            "LC3plus",
             4.8,
-            "BLE jitter buffer / route compensation +42ms",
+            "BLE client route / 127.0.0.1:8081",
             True,
             ("record_audio", "modify_audio", "bluetooth_connect", "bluetooth_scan"),
         ),
@@ -91,8 +91,15 @@ def status(selected: InputKind = "internal_mic") -> dict[str, object]:
     probe: dict[str, object] = {"ok": True, "alsa_cards": [], "snd_nodes": [], "has_capture": False, "offline": True}
     try:
         from local_audio_probe import alsa_cards
+        from usb_uac2 import hotplug_snapshot
+        from ble_codecs import negotiate
 
         probe = alsa_cards()
+        usb = hotplug_snapshot()
+        ble = negotiate("lc3plus")
+        probe["usb_count"] = usb.get("count", 0)
+        probe["ble_adapters"] = ble.get("adapters", [])
+        probe["hardware_present"] = bool(probe.get("has_capture") or usb.get("count"))
     except Exception:  # noqa: BLE001 - probe is optional, contract stays
         pass
     return {

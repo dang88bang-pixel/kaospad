@@ -43,7 +43,8 @@ def lookup(path: Path, word: str) -> list[str]:
     if row:
         return [item.strip().upper() for item in row[0].split(",") if item.strip()]
     tail = normalized[-3:] if len(normalized) >= 3 else normalized
-    return [w.upper() for w, _, _ in DEFAULT_ROWS if w.endswith(tail)][:5] or ["BETON", "SEKTOR", "DÄMON"]
+    matches = [w.upper() for w, _, _ in DEFAULT_ROWS if w.endswith(tail) or normalized.endswith(w[-2:])]
+    return matches[:8]
 
 
 def main() -> None:
