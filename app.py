@@ -44,12 +44,12 @@ from session_engine import (  # noqa: E402
 
 AUTO_PORT_CANDIDATES = (8080, 8086, 8088, 8090, 8099)
 DAEMONS = [
-    {**ENGINES["orchestrator"], "latency": "AUTO"},
-    {**ENGINES["audio"], "latency": "0.4ms shim"},
-    {**ENGINES["neurallift"], "latency": "1.8s fallback"},
-    {**ENGINES["avatar"], "latency": "16.6ms"},
-    {**ENGINES["dsp"], "latency": "<1.2ms"},
-    {**ENGINES["whisper"], "latency": "<9ms shim"},
+    {**ENGINES["orchestrator"], "latency": "AUTO", "task": "session/orchestrate"},
+    {**ENGINES["audio"], "latency": "<1.2ms", "task": "audio.start/mic.arm"},
+    {**ENGINES["neurallift"], "latency": "1.8s", "task": "neurallift.generate"},
+    {**ENGINES["avatar"], "latency": "16.6ms", "task": "avatar.mode"},
+    {**ENGINES["dsp"], "latency": "<1.2ms", "task": "dsp.process/kaoss/pad"},
+    {**ENGINES["whisper"], "latency": "<9ms", "task": "transcribe/rhyme.lookup"},
 ]
 
 # POST path -> action name in the interaction chain.
@@ -77,7 +77,7 @@ POST_ROUTES = {
 ENDPOINT_LIST = [
     "/api/status", "/api/runtime", "/api/state", "/api/actions", "/api/events",
     "/api/action", "/api/chain/run", "/api/chain/reset",
-    "/native-bridge/ports", "/devices/status", "/devices/select", "/permissions/check",
+    "/native-bridge/ports", "/native-bridge/load", "/devices/status", "/devices/select", "/permissions/check",
     "/api/presets", "/api/preset/apply", "/api/kaoss/xy", "/api/kaoss/freeze",
     "/api/dsp/process", "/api/pad/trigger", "/api/transport/record", "/api/loop/capture",
     "/api/transcribe", "/api/rhymes", "/api/avatar/mode", "/api/neurallift/generate",
@@ -85,6 +85,30 @@ ENDPOINT_LIST = [
 ]
 
 ENGINE = build_engine(DB_PATH)
+# Native-Bridge: welcher Engine-Port zuletzt zur Aktion geladen wurde.
+BRIDGE_LOADED: dict[int, dict[str, object]] = {}
+BRIDGE_ACTIVE_PORT: int | None = None
+
+
+def load_native_port_for_action(action: str) -> dict[str, object] | None:
+    spec = ACTION_BY_NAME.get(action)
+    if spec is None:
+        return None
+    global BRIDGE_ACTIVE_PORT
+    port = int(ENGINES[spec.engine]["port"])
+    payload = {
+        "ok": True,
+        "action": action,
+        "engine": spec.engine,
+        "port": port,
+        "bind": "127.0.0.1",
+        "status": "LOADED",
+        "native_bridge": True,
+        "task": spec.summary,
+    }
+    BRIDGE_LOADED[port] = payload
+    BRIDGE_ACTIVE_PORT = port
+    return payload
 
 
 def json_bytes(payload: object) -> bytes:
@@ -288,9 +312,23 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path == "/native-bridge/ports":
-            self.send_json({"ok": True, "bridge": "kaoss-one-app", "ports": self.port_statuses()})
+            self.send_json({
+                "ok": True,
+                "bridge": "kaoss-native-bridge",
+                "auto_load": True,
+                "active_port": BRIDGE_ACTIVE_PORT,
+                "ports": self.port_statuses(),
+            })
             return
 
+        if path in {"/native-bridge/load", "/api/native-bridge/load"}:
+            action = str(query.get("action", [""])[0] or "")
+            loaded = load_native_port_for_action(action)
+            if loaded is None:
+                self.send_json({"ok": False, "error": f"no port mapping for action {action}"}, code=400)
+                return
+            self.send_json(loaded)
+            return
         if path == "/session":
             state = ENGINE.state()
             self.send_json({
@@ -461,7 +499,9 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             if action not in ACTION_BY_NAME:
                 self.send_json({"ok": False, "error": f"unknown action: {action}", "known": sorted(ACTION_BY_NAME)}, code=400)
                 return
-            self.send_json(self.action_response(ENGINE.dispatch(action, params, strict=strict)))
+            result = ENGINE.dispatch(action, params, strict=strict)
+            load_native_port_for_action(action)
+            self.send_json(self.action_response(result))
             return
 
         if path in {"/api/session/import", "/session/import"}:
@@ -481,7 +521,18 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                 if action:
                     normalized.append({"action": action, **payload})
             report = ENGINE.run_script(normalized, strict=strict)
-            self.send_json({"ok": report["ok"], "chain_run": report})
+            last_action = next((item.get("action") for item in reversed(normalized) if item.get("action")), "boot")
+            load_native_port_for_action(str(last_action))
+            self.send_json({"ok": report["ok"], "chain_run": report, "native_bridge": BRIDGE_LOADED.get(BRIDGE_ACTIVE_PORT or 0)})
+            return
+
+        if path in {"/native-bridge/load", "/api/native-bridge/load"}:
+            action = str(params.get("action", ""))
+            loaded = load_native_port_for_action(action)
+            if loaded is None:
+                self.send_json({"ok": False, "error": f"no port mapping for action {action}"}, code=400)
+                return
+            self.send_json(loaded)
             return
 
         action = POST_ROUTES.get(path)
@@ -489,13 +540,17 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": f"no POST action for {path}", "routes": sorted(POST_ROUTES)}, code=404)
             return
         strict = bool(params.pop("strict", True))
-        self.send_json(self.action_response(ENGINE.dispatch(action, params, strict=strict)))
+        result = ENGINE.dispatch(action, params, strict=strict)
+        load_native_port_for_action(action)
+        self.send_json(self.action_response(result))
 
     def action_response(self, result: dict[str, object]) -> dict[str, object]:
         code_status = result.get("status")
+        action = result.get("action")
+        loaded = BRIDGE_LOADED.get(int(result.get("port") or 0))
         return {
             "ok": bool(result.get("ok")),
-            "action": result.get("action"),
+            "action": action,
             "seq": result.get("seq"),
             "status": code_status,
             "engine": result.get("engine"),
@@ -505,6 +560,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             "detail": result.get("detail"),
             "state": result.get("state"),
             "chain": (result.get("state") or {}).get("chain"),
+            "native_bridge": loaded or load_native_port_for_action(str(action or "")),
         }
 
     def chain_logs(self, limit: int = 14) -> list[str]:
@@ -531,18 +587,32 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         engine_hits = {}
         for event in ENGINE.events:
             engine_hits[event["engine"]] = engine_hits.get(event["engine"], 0) + 1
-        return [
-            {
+        rows = []
+        for spec in DAEMONS:
+            port = int(spec["port"])
+            loaded = BRIDGE_LOADED.get(port)
+            hits = engine_hits.get(
+                next((name for name, meta in ENGINES.items() if meta["port"] == port), ""), 0
+            )
+            if BRIDGE_ACTIVE_PORT == port:
+                status = "ACTIVE"
+            elif loaded or hits:
+                status = "LOADED"
+            elif port in {8080, 8081, 8084}:
+                status = "LOCKED"
+            else:
+                status = "READY"
+            rows.append({
                 **spec,
                 "bind": self.server.server_address[0],
-                "status": "LOCKED" if spec["port"] in {8080, 8081, 8084} else "READY",
+                "status": status,
                 "single_app": True,
-                "chain_hits": engine_hits.get(
-                    next((name for name, meta in ENGINES.items() if meta["port"] == spec["port"]), ""), 0
-                ),
-            }
-            for spec in DAEMONS
-        ]
+                "auto_loaded": bool(loaded),
+                "loaded_action": (loaded or {}).get("action"),
+                "native_bridge": True,
+                "chain_hits": hits,
+            })
+        return rows
 
 
 def is_port_free(host: str, port: int) -> bool:

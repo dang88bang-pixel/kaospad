@@ -119,6 +119,8 @@ REQUIRED_APP_TOKENS = {
     "renderChain",
     "renderPadGrid",
     "hydrateFromServer",
+    "loadNativePortForTask",
+    "/native-bridge/load",
     "/api/action",
     "/api/state",
     "__KAOSS_CHAIN__",

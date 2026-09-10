@@ -44,6 +44,20 @@ const DAEMONS = [
   { port: 8085, name: 'offline-whisper-daemon', rule: 'Text + Reimketten Lookup', protocol: 'IPC UTF-8' },
 ];
 
+if (globalThis.KaossNativeBridge && !globalThis.__KAOSS_NATIVE_BRIDGE__) {
+  const native = globalThis.KaossNativeBridge;
+  globalThis.__KAOSS_NATIVE_BRIDGE__ = {
+    portStatus(port) {
+      const raw = native.portStatus(port);
+      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    },
+    loadPortForAction(action) {
+      if (!native.loadPortForAction) return null;
+      const raw = native.loadPortForAction(action);
+      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    },
+  };
+}
 const bridge = globalThis.__KAOSS_NATIVE_BRIDGE__;
 const bridgeMode = document.querySelector('#bridge-mode');
 const portGrid = document.querySelector('#port-grid');
@@ -93,15 +107,19 @@ async function readPortStatus(spec) {
 }
 
 function renderPortCard(spec, status) {
-  const tone = status.status === 'READY' || status.status === 'LOCKED' ? 'locked' : 'reserved';
+  const tone = status.status === 'ACTIVE' || status.status === 'LOADED' || status.status === 'LOCKED' || status.status === 'READY'
+    ? 'locked'
+    : 'reserved';
+  const active = status.status === 'ACTIVE' ? ' active' : '';
   const hits = status.chain_hits ? ` // ${status.chain_hits} chain hits` : '';
+  const task = status.loaded_action || spec.task || '';
   return `
-    <article class="port-card ${tone}">
+    <article class="port-card ${tone}${active}" data-port="${spec.port}">
       <div class="port-head"><span>:${spec.port}</span><b>${status.status}</b></div>
       <strong>${spec.name}</strong>
       <small>${spec.protocol}</small>
-      <p>${spec.rule}</p>
-      <code>${status.bind}:${spec.port} // ${status.latency}${hits}</code>
+      <p>${spec.rule}${task ? ` // ${task}` : ''}</p>
+      <code>${status.bind || '127.0.0.1'}:${spec.port} // ${status.latency || 'AUTO'}${hits}</code>
     </article>
   `;
 }
@@ -222,7 +240,28 @@ async function dispatchAction(action, params = {}) {
   }
   chainState = chainReducer(chainState, event);
   renderChain(event);
+  await loadNativePortForTask(action, event);
   return event;
+}
+
+async function loadNativePortForTask(action, event) {
+  try {
+    if (bridge?.loadPortForAction) {
+      const loaded = bridge.loadPortForAction(action);
+      if (loaded?.port && bridgeMode) {
+        bridgeMode.value = `BRIDGE: NATIVE :${loaded.port} ${action}`;
+      }
+    } else {
+      await fetch(`/native-bridge/load?action=${encodeURIComponent(action)}`, { cache: 'no-store' });
+    }
+  } catch {
+    /* Port-Load darf die Kette nicht blockieren. */
+  }
+  cachedNativeStatuses = null;
+  refreshPortView();
+  if (event?.port && bridgeMode && !bridge?.loadPortForAction) {
+    bridgeMode.value = `BRIDGE: AUTO :${event.port} ${action}`;
+  }
 }
 
 async function runFullChain() {
