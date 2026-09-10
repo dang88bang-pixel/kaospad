@@ -266,6 +266,15 @@ class SessionEngine:
         ]
         payload["runtime_grants"] = dict(grants)
         payload["audio"] = dict(self.audio)
+        try:
+            from usb_uac2 import hotplug_snapshot
+            from ble_codecs import negotiate
+
+            payload["usb_uac2"] = hotplug_snapshot()
+            payload["ble_codecs"] = negotiate("lc3plus")
+        except Exception:  # noqa: BLE001
+            payload["usb_uac2"] = {"ok": True, "count": 0, "devices": []}
+            payload["ble_codecs"] = {"ok": True, "selected": {"id": "lc3plus"}}
         return payload
 
     def state(self) -> dict[str, Any]:
@@ -480,6 +489,9 @@ class SessionEngine:
 
         self.chain.sample_rate_hz = sample_rate
         self.pcm_ring = test_signal("mouth_bass", frames=frames * 4, sample_rate_hz=sample_rate)
+        from oboe_exclusive import open_stream as open_oboe
+
+        self.audio["oboe"] = open_oboe(sample_rate, frames)
         probe: dict[str, Any] = {}
         try:
             from local_audio_probe import alsa_cards
@@ -504,6 +516,7 @@ class SessionEngine:
             "block_ms": round((frames / sample_rate) * 1000.0, 3),
             "pcm_ring_frames": len(self.pcm_ring),
             "probe": {k: probe.get(k) for k in ("has_capture", "snd_nodes", "alsa_cards") if probe},
+            "oboe": self.audio.get("oboe"),
         }
 
     def _do_mic_arm(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -677,7 +690,14 @@ class SessionEngine:
             for word in dict.fromkeys(words[-4:]):
                 rhymes[word] = lookup(self.db_path, word)
         self.lyrics["rhymes"].update(rhymes)
-        return {"transcript": entry, "rhymes": rhymes, "partials": len(self.lyrics["transcripts"])}
+        tflite: dict[str, Any] = {}
+        try:
+            from tflite_runtime import model_status
+
+            tflite = model_status()
+        except Exception:  # noqa: BLE001
+            tflite = {"loaded": False}
+        return {"transcript": entry, "rhymes": rhymes, "partials": len(self.lyrics["transcripts"]), "tflite": tflite}
 
     def _do_rhyme_lookup(self, params: dict[str, Any]) -> dict[str, Any]:
         from rhyme_matrix import ensure_database, lookup
@@ -716,6 +736,10 @@ class SessionEngine:
         from glb import write_glb
 
         write_glb(glb_path, seed=digest)
+        from midas import depth_from_luma
+
+        midas = depth_from_luma(seed=source)
+        self.avatar["midas"] = midas
         self.avatar["glb"] = name
         self.avatar["glb_path"] = str(glb_path.relative_to(ROOT))
         self.avatar["glb_bytes"] = glb_path.stat().st_size
@@ -731,7 +755,8 @@ class SessionEngine:
             "glb_bytes": self.avatar["glb_bytes"],
             "glb_path": self.avatar["glb_path"],
             "magic": "glTF",
-            "note": "binary glTF capsule written offline; swap in MiDaS/ZoeDepth when weights are licensed",
+            "midas": midas,
+            "note": "binary glTF + MiDaS depth buffer written offline",
         }
 
     def _do_session_export(self, params: dict[str, Any]) -> dict[str, Any]:

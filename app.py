@@ -26,6 +26,7 @@ WEB_ROOT = ROOT / "web"
 DB_PATH = ROOT / "dist" / "offline-rhymes.sqlite3"
 sys.path.insert(0, str(ROOT / "engines"))
 sys.path.insert(0, str(ROOT / "engines" / "whisper_offline"))
+sys.path.insert(0, str(ROOT / "engines" / "neurallift_360"))
 
 from device_matrix import status as device_status  # noqa: E402
 from dsp_chain import LIMITER_THRESHOLD_DBFS, KaossQuadChain, process_block, test_signal  # noqa: E402
@@ -306,6 +307,39 @@ class OneAppHandler(SimpleHTTPRequestHandler):
 
         if path == "/devices/status":
             self.send_json(ENGINE.device_snapshot(selected_from_query(query)))
+            return
+
+        if path in {"/devices/usb", "/api/usb/hotplug"}:
+            from usb_uac2 import hotplug_snapshot
+
+            self.send_json(hotplug_snapshot())
+            return
+
+        if path in {"/devices/ble", "/api/ble/codecs"}:
+            from ble_codecs import negotiate
+
+            preferred = query.get("codec", ["lc3plus"])[0]
+            self.send_json(negotiate(preferred))
+            return
+
+        if path in {"/audio/oboe", "/api/audio/oboe"}:
+            from oboe_exclusive import open_stream
+
+            rate = float(query.get("sample_rate_hz", [ENGINE.audio["sample_rate_hz"]])[0])
+            frames = int(query.get("frames", [ENGINE.audio["frames_per_buffer"]])[0])
+            self.send_json(open_stream(rate, frames))
+            return
+
+        if path in {"/models/whisper", "/api/models/whisper"}:
+            from tflite_runtime import model_status
+
+            self.send_json(model_status())
+            return
+
+        if path in {"/models/midas", "/api/models/midas"}:
+            from midas import depth_from_luma
+
+            self.send_json(depth_from_luma(seed=query.get("source", ["orchestrator"])[0]))
             return
 
         if path == "/devices/select":

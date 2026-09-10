@@ -21,6 +21,24 @@ struct AudioFlingerPipeStatus {
 
 AudioFlingerPipeStatus open_audioflinger_direct_pipe(const AudioFlingerPipeConfig& cfg);
 
+struct OboeExclusiveConfig {
+  double sample_rate_hz = 96000.0;
+  std::uint32_t frames_per_burst = 128;
+  bool exclusive = true;
+  bool low_latency = true;
+};
+
+struct OboeExclusiveStatus {
+  bool opened = false;
+  bool exclusive = true;
+  double burst_ms = 0.0;
+  double roundtrip_ms = 0.0;
+  std::uint32_t xrun_count = 0;
+  std::string route = "oboe://exclusive/127.0.0.1:8081";
+};
+
+OboeExclusiveStatus open_oboe_exclusive_stream(const OboeExclusiveConfig& cfg);
+
 float dbfs_to_linear(float dbfs);
 float brickwall_soft_knee_sample(float sample, float threshold_dbfs = -3.2F);
 std::vector<float> brickwall_soft_knee_buffer(const std::vector<float>& input,

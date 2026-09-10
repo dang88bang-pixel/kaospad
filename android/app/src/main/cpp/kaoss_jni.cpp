@@ -69,3 +69,18 @@ Java_com_kaoss_studio_KaossNative_detectTransient(JNIEnv* env, jclass /*clazz*/,
        << ",\"latency_ms\":" << event.detection_latency_ms << "}";
   return to_jstring(env, json.str());
 }
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_kaoss_studio_KaossNative_oboeExclusive(JNIEnv* env, jclass /*clazz*/, jdouble sample_rate,
+                                                jint frames) {
+  kaoss::OboeExclusiveConfig cfg;
+  cfg.sample_rate_hz = sample_rate;
+  cfg.frames_per_burst = static_cast<std::uint32_t>(frames);
+  const auto status = kaoss::open_oboe_exclusive_stream(cfg);
+  std::ostringstream json;
+  json << "{\"opened\":" << (status.opened ? "true" : "false") << ",\"exclusive\":"
+       << (status.exclusive ? "true" : "false") << ",\"burst_ms\":" << status.burst_ms
+       << ",\"roundtrip_ms\":" << status.roundtrip_ms << ",\"xrun_count\":" << status.xrun_count
+       << ",\"route\":\"" << json_escape(status.route) << "\"}";
+  return to_jstring(env, json.str());
+}

@@ -6,6 +6,7 @@ add_library(kaoss_native SHARED
   dsp_transient_splitter.cpp
   kaoss_quad_engine.cpp
   kaoss_jni.cpp
+  oboe_exclusive_stream.cpp
 )
 target_include_directories(kaoss_native PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(kaoss_native PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED YES)

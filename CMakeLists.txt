@@ -10,6 +10,7 @@ add_library(kaoss_dsp STATIC
   android/app/src/main/cpp/audio_flinger_hook.cpp
   android/app/src/main/cpp/dsp_transient_splitter.cpp
   android/app/src/main/cpp/kaoss_quad_engine.cpp
+  android/app/src/main/cpp/oboe_exclusive_stream.cpp
 )
 target_include_directories(kaoss_dsp PUBLIC android/app/src/main/cpp)
 

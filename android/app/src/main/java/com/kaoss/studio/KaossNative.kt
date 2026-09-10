@@ -12,4 +12,5 @@ object KaossNative {
     @JvmStatic external fun pipeStatus(sampleRate: Double, frames: Int): String
     @JvmStatic external fun limiterPeak(input: FloatArray): Float
     @JvmStatic external fun detectTransient(input: FloatArray, sampleRate: Double): String
+    @JvmStatic external fun oboeExclusive(sampleRate: Double, frames: Int): String
 }
