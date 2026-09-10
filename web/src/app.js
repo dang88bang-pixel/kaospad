@@ -658,6 +658,25 @@ async function loadLogs() {
 
 document.querySelector('#apply-preset').addEventListener('click', applyPreset);
 document.querySelector('#export-session').addEventListener('click', exportSession);
+document.querySelector('#import-session')?.addEventListener('click', async () => {
+  try {
+    const latest = await fetch('/api/session/latest', { cache: 'no-store' });
+    if (!latest.ok) throw new Error('keine persistierte Session');
+    const body = await latest.json();
+    const replay = await fetch('/api/session/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: body.session || body }),
+    });
+    const payload = await replay.json();
+    vaultState.value = payload.ok
+      ? `VAULT: REPLAY ${payload.replay?.steps || 0} STEPS`
+      : `VAULT: REPLAY BLOCKED ${JSON.stringify(payload.replay?.blocked || [])}`;
+    hydrateFromServer();
+  } catch (error) {
+    vaultState.value = `VAULT: REPLAY ERROR ${error.message}`;
+  }
+});
 loadPresets().then(() => applyPreset({ dispatch: false }));
 loadLogs();
 setInterval(loadLogs, 6000);

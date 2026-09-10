@@ -6,11 +6,12 @@
 | **B. Offizieller `gradle-wrapper.jar`** | `services.gradle.org` TLS blockiert | nicht ausführbar |
 | **C. Play App Signing / Upload-Key** | braucht Google Play Console | nicht in CI |
 | **D. OpenSSL Offline-Signer (gewählt)** | OpenSSL 3 vorhanden | **v1 JAR + v2 APK Sig Block 42**, volles Payload |
-| **E. PWA / TWA** | `web/` + `make` PWA-ZIP | Alternative ohne Store, kein nativer Package-Manager |
+| **E. PWA / TWA** | `web/` + PWA-ZIP | Alternative ohne Store |
+| **F. GitHub Actions Cloud SDK** | Runner mit Temurin 17 + SDK 35 | `assembleRelease` Artifact |
 
-Gewählt: **D**. Rebuild: `make signed-apk`.
+Gewählt lokal: **D**. Cloud: **F** (Actions → *Android signed APK*). Rebuild lokal: `make signed-apk`.
 
-Vollständiges Payload der APK:
+Vollständiges Payload der Offline-APK:
 
 - Binary `AndroidManifest.xml` (`com.kaoss.studio`, min 26, target 35)
 - `classes.dex` (`MainActivity` + `<init>` bytecode)
@@ -19,10 +20,6 @@ Vollständiges Payload der APK:
 - Android-Quellen unter `assets/android-src/`
 - Signatur RSA-2048, Zertifikat `android/signing/kaoss-release-cert.pem`
 
-<<<<<<< HEAD
-Wenn SDK erreichbar ist: `android/gradlew assembleRelease` + dasselbe Keystore ersetzen `apksigner`.
-=======
-Cloud-Build (ohne lokales SDK): GitHub Action `Android signed APK (cloud SDK)` → Artifact `KaossBeatboxStudio-v5.0.0-cloud-signed`.
+Cloud-Build: GitHub Action `Android signed APK (cloud SDK)` → Artifact `KaossBeatboxStudio-v5.0.0-cloud-signed`.
 
-Wenn SDK lokal erreichbar ist: `gradle -p android :app:assembleRelease` (Wrapper-JAR fehlt hier; CI nutzt `gradle/actions/setup-gradle`).
->>>>>>> 34c5fbf (Add GitHub Actions cloud assembleRelease for a real signed APK.)
+Wenn SDK lokal erreichbar ist: `gradle -p android :app:assembleRelease`.

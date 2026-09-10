@@ -48,6 +48,7 @@ REQUIRED_IDS = {
     "preset-select",
     "apply-preset",
     "export-session",
+    "import-session",
     "vault-state",
     "bank-grid",
     "live-log",
