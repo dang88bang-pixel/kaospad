@@ -22,8 +22,11 @@ def main() -> int:
             "META-INF/KAOSS.SF",
             "META-INF/KAOSS.RSA",
             "assets/www/index.html",
+            "resources.arsc",
+            "assets/BUILD.txt",
         ):
             assert required in names, required
+        assert any(n.startswith("assets/android-src/") for n in names)
         assert zf.read("classes.dex")[:4] == b"dex\n"
         assert zf.read("AndroidManifest.xml")[:2] == b"\x03\x00"
     sha = Path(str(APK) + ".sha256").read_text().split()[0]

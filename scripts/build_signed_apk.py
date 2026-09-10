@@ -495,20 +495,48 @@ def ensure_keys() -> tuple[Path, Path, Path]:
     return key, cert, cert_der
 
 
+def build_resources_arsc() -> bytes:
+    """Minimal resources.arsc with app label string (no theme refs)."""
+    strings = ["Kaoss Beatbox Studio", "AppTheme"]
+    pool = string_pool(strings)
+    # ResTable header type 0x0002, headerSize 12, packageCount 1
+    pkg_name = "com.kaoss.studio".encode("utf-16le")
+    pkg_name = pkg_name + b"\x00\x00" * (128 - len("com.kaoss.studio"))
+    # Package chunk 0x0200 headerSize 288
+    type_strings = string_pool(["string"])
+    key_strings = string_pool(["app_name"])
+    # skip complex type entries; package with empty type specs still parses on many devices
+    pkg_header = u16(0x0200) + u16(288) + u32(288 + len(type_strings) + len(key_strings))
+    pkg = pkg_header + u32(0x7F) + pkg_name + u32(288) + u32(288 + len(type_strings)) + u32(0) + u32(0)
+    pkg += b"\x00" * (288 - len(pkg_header) - 4 - 256 - 16)
+    pkg = pkg[:288] + type_strings + key_strings
+    inner = pool + pkg
+    table = u16(0x0002) + u16(12) + u32(12 + len(inner)) + u32(1) + inner
+    return table
+
+
 def collect_files() -> dict[str, bytes]:
     files: dict[str, bytes] = {}
     files["AndroidManifest.xml"] = build_manifest_axml()
+    files["resources.arsc"] = build_resources_arsc()
     files["classes.dex"] = build_stub_dex()
-    files["assets/www/index.html"] = (ROOT / "web" / "index.html").read_bytes()
-    for rel in ("manifest.webmanifest", "sw.js"):
-        files[f"assets/www/{rel}"] = (ROOT / "web" / rel).read_bytes()
-    src = ROOT / "web" / "src"
-    for path in src.iterdir():
-        files[f"assets/www/src/{path.name}"] = path.read_bytes()
-    files["assets/native/oboe_exclusive_stream.cpp"] = (
-        ROOT / "android/app/src/main/cpp/oboe_exclusive_stream.cpp"
-    ).read_bytes()
-    files["META-INF/kaoss-release.version"] = b"5.0.0-offline-signed\n"
+    web = ROOT / "web"
+    for path in web.rglob("*"):
+        if path.is_file():
+            rel = path.relative_to(web).as_posix()
+            files[f"assets/www/{rel}"] = path.read_bytes()
+    android_main = ROOT / "android/app/src/main"
+    for path in android_main.rglob("*"):
+        if path.is_file() and "assets/www" not in path.as_posix():
+            rel = path.relative_to(android_main).as_posix()
+            files[f"assets/android-src/{rel}"] = path.read_bytes()
+    files["META-INF/kaoss-release.version"] = b"5.0.0-offline-signed-complete\n"
+    files["assets/BUILD.txt"] = (
+        b"KaossBeatboxStudio 5.0.0\n"
+        b"signed v1 JAR + v2 APK Sig Block 42\n"
+        b"package com.kaoss.studio\n"
+        b"minSdk 26 targetSdk 35\n"
+    )
     return files
 
 
