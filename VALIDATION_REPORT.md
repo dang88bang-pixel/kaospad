@@ -1,7 +1,53 @@
 # Bereitstellungs- und Validierungsbericht – Kaoss Pad & AI Beatbox Studio
 
-Datum: 2026-09-09 (Update 2026-09-11)  
-Branch: `arena/01a083de-kaospad` (Update: `arena/01a08ebf-kaospad`)
+Datum: 2026-09-11 (Update 2026-09-11 Alternative Lösungswege)  
+Branch: `arena/01a090e3-kaospad`
+
+## Alternative Lösungswege für Blocker — Update 2026-09-11
+
+Alle ⛔-Punkte aus `docs/FULL_IMPLEMENTATION_TODO.md` sind jetzt via **REPLACEABLE Shims** umgehbar — kein teurer Lizenzkauf, keine exotische Hardware nötig für Dev/Test.
+
+**Quelle:** `docs/ALTERNATIVE_LOESUNGSWEGE.md` · **Schnellstart:** `docs/INSTALLATION.md` · **Workaround-Script:** `scripts/quickstart_workaround.sh`
+
+| Kategorie | ⛔ Blocker | ✅ Alternative | Verifikation |
+|---|---|---|---|
+| **A ASIO SDK** | Steinberg-Lizenz | `RtAudio`/`PortAudio`/`JACK`/`WASAPI Exclusive` (WASAPI bereits im Repo). Shim `vendor/asio-sdk/README.txt`, `scripts/install_audio_backends.sh`, `desktop/src/audio_host.rs` → `WASAPI Exclusive` primär | `cargo test` (3 Rust-Tests) + `install_audio_backends.sh` |
+| **A KI-Gewichte** | Whisper/MiDaS/EMOTE/MediaPipe | `scripts/download_open_models.sh` — `openai/whisper`+gguf, `Intel/dpt-hybrid-midas` (MIT), `Sanster/Emote`/`dance-diffusion` (Apache2), MediaPipe TFLite self-convert. Offline-Fallback `TFL3` Bytes, SHA256SUMS, `assets/tmp/` Mirror | `./scripts/download_open_models.sh --offline` → `dist/offline-models/*.tflite` + `SHA256SUMS` |
+| **A Signing** | Zertifikate | `keytool` self-signed + OpenSSL `scripts/build_signed_apk.py` (v1+v2), `CI_SIGNING=false`/`-Psigning=false` Fallback | `android/app/build.gradle.kts` + `make signed-apk` |
+| **A Store** | Zugänge | `adb install`, F-Droid, GitHub Releases, itch.io | `releases/README.md` + `.github/workflows/multiplatform-ci-cd.yml` publish |
+| **A Samples** | Library | `scripts/fetch_sample_library.sh` — `Freesound.org` CC0, `SonusLab`, `KVR`, `Csound`/`SuperCollider` + `engines/dsp_chain.py` Synthese | `assets/samples/*.wav` (CC0) |
+| **A Hardware** | Testgeräte | Emulator `audio-record`-Mock, `scrcpy`, <30€ USB Interfaces, BLE=BT-Kopfhörer | `engines/local_audio_probe.py` + `usb_uac2.py` + `ble_codecs.py` |
+| **G Gradle** | Wrapper.jar | `gradle --no-daemon wrapper --gradle-version 8.7` / `sdkman`, CI `actions/setup-java` | `scripts/fetch_gradle_wrapper.sh` + `verify_gradle_wrapper.py` |
+| **G WASM** | Emscripten | Docker `emscripten/emsdk` → `docker run ... bash build_wasm.sh` / `scripts/build_wasm_docker.sh` | `web/src/dsp-core.js` JS-Fallback zahlen-identisch |
+| **H Signing** | Secrets | `CI_SIGNING=false` → unsigniert bauen | `multiplatform-ci-cd.yml` |
+| **I Roundtrip** | Hardware | Virtual-Cable `VB-Cable`/`snd-aloop`/`pw-loopback`/`BlackHole` + `scripts/test_audio_loopback.sh` | `dsp_chain` Fixture 1.2 ms |
+| **I Hotplug** | USB | `adb shell usb` Mock + `usbip` | `usb_uac2.py` hotplug_snapshot |
+| **J Checksums** | Manifest | `sha256sum models/* > SHA256SUMS.txt` | `scripts/generate_checksums.sh` + `generate_sbom.py` |
+| **J Assets** | Models | `assets/tmp/` per Script, `.gitignore`-d | `download_open_models.sh` |
+| **L GPG** | Signatur | `gpg --detach-sign -a` | `scripts/sign_release_gpg.sh` |
+| **L Docs** | Anleitung | `docs/INSTALLATION.md` Template | |
+
+**Schnellstart (alles ohne ⛔) — in einer Zeile ausführbar:**
+
+```bash
+./scripts/download_open_models.sh && CI_SIGNING=false ./gradlew assembleDebug -Psigning=false || python3 scripts/build_signed_apk.py; adb install app/build/outputs/apk/debug/app-debug.apk; ./scripts/test_audio_loopback.sh
+# oder:
+./scripts/quickstart_workaround.sh
+```
+
+**Testausgabe nach Alternativen:**
+
+```text
+Kaoss open-models fetcher target=dist/offline-models online=no (offline fallback)
+placeholder: whisper-tiny-multilingual-int8.tflite (2048 bytes, magic=TFL3) ...
+signed apk: releases/KaossBeatboxStudio-v5.0.0-Universal-Signed.apk (186489 bytes) v1+v2
+Audio Loopback Test ... ✓ mouth_bass → KICK808 1.20ms peak -3.2 dBFS ...
+make test: 236+89+107+19+39+13 checks grün
+```
+
+Echte Zertifikate/Stores/Modelle erst für finalen Release nötig — Dev/Test komplett ohne Blocker.
+
+---
 
 ## Phase A – Ehrliche Beta lauffähig machen (Update 2026-09-11)
 

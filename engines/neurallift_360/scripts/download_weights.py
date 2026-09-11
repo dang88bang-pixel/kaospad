@@ -21,8 +21,12 @@ def main() -> None:
     args = parser.parse_args()
     target = Path(args.target)
     target.mkdir(parents=True, exist_ok=True)
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "whisper_offline"))
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    # Ensure engines/ is on path for dsp_chain etc. (Alternative Lösungswege J)
+    engines_root = Path(__file__).resolve().parents[2]
+    sys.path.insert(0, str(engines_root))
+    sys.path.insert(0, str(engines_root / "whisper_offline"))
+    sys.path.insert(0, str(engines_root / "neurallift_360"))
+    sys.path.insert(0, str(engines_root / "mopac_dance_learner"))
     from tflite_runtime import ensure_int8_weights
     from midas import ensure_midas_weights
 

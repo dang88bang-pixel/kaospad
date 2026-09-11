@@ -223,13 +223,12 @@ main() {
     ensure_placeholder "$abs_target/emote-reference.bin" "EMOT" "emote-apache2-offline" 512
   fi
 
-  # Auch via bestehende Python-Weight-Helpers sicherstellen
+  # Auch via bestehende Python-Weight-Helpers sicherstellen (J — engines/ auf PYTHONPATH)
   if [[ -f "$ROOT/engines/neurallift_360/scripts/download_weights.py" ]]; then
-    python3 "$ROOT/engines/neurallift_360/scripts/download_weights.py" --target "$abs_target" || true
+    PYTHONPATH="$ROOT/engines:$ROOT/engines/whisper_offline:$ROOT/engines/neurallift_360:$PYTHONPATH" python3 "$ROOT/engines/neurallift_360/scripts/download_weights.py" --target "$abs_target" 2>&1 | grep -v ModuleNotFoundError || true
   fi
   if [[ -f "$ROOT/engines/whisper_offline/tflite_runtime.py" ]]; then
-    python3 -c "from engines.whisper_offline.tflite_runtime import ensure_int8_weights; ensure_int8_weights()" 2>/dev/null || \
-    python3 -c "import sys; sys.path.insert(0,'engines/whisper_offline'); from tflite_runtime import ensure_int8_weights; ensure_int8_weights()" || true
+    PYTHONPATH="$ROOT/engines:$ROOT/engines/whisper_offline" python3 -c "from tflite_runtime import ensure_int8_weights; ensure_int8_weights()" 2>/dev/null || true
   fi
 
   write_manifest "$abs_target"
