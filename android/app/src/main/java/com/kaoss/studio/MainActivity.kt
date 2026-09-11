@@ -28,7 +28,10 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        bridge = KaossJsBridge(this)
+        // Lokale Val statt Smart-Cast auf die mutable Property: Kotlin lehnt
+        // `addJavascriptInterface(bridge, ...)` sonst ab ("Smart cast impossible").
+        val jsBridge = KaossJsBridge(this)
+        bridge = jsBridge
         requestRuntimePermissions()
         registerUsbHotplugReceiver()
         val view = WebView(this)
@@ -44,7 +47,7 @@ class MainActivity : Activity() {
                 request.grant(request.resources)
             }
         }
-        view.addJavascriptInterface(bridge, "KaossNativeBridge")
+        view.addJavascriptInterface(jsBridge, "KaossNativeBridge")
         view.loadUrl("file:///android_asset/www/index.html")
         setContentView(view)
     }
