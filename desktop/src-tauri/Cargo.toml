@@ -3,5 +3,16 @@ name = "kaoss-tauri-host"
 version = "5.0.0"
 edition = "2021"
 license = "MIT"
+description = "Kaoss Tauri host — wraps desktop audio_host.rs + daemon_manager for WebView — REAL-IMPLEMENTATION 2026-09-11"
+# Tauri v1/v2 WebView host — shares same routing matrix as desktop/src/audio_host.rs
 
 [dependencies]
+# Tauri runtime (optional, not required for CI shim)
+# tauri = { version = "1.6", optional = true, features = ["shell-open"] }
+
+[features]
+default = []
+tauri-webview = []
+
+[build-dependencies]
+# tauri-build = { version = "1.4", optional = true }

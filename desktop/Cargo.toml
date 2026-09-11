@@ -3,21 +3,23 @@ name = "kaoss-desktop"
 version = "5.0.0"
 edition = "2021"
 license = "MIT"
-description = "Kaoss desktop host — WASAPI Exclusive / ALSA / PipeWire / JACK — ASIO optional via vendor SDK"
+description = "Kaoss desktop host — WASAPI Exclusive / ALSA / PipeWire / JACK — ASIO optional via vendor SDK — REAL-IMPLEMENTATION 2026-09-11"
 # Alternative Lösungswege A: ASIO SDK (Steinberg) → RtAudio/PortAudio/JACK/WASAPI Exclusive
-# WASAPI Exclusive ist primär, ASIO nur für Windows-Pro-Users (siehe scripts/install_audio_backends.sh)
+# WASAPI Exclusive ist primär, ASIO nur für Windows-Pro-Users (siehe scripts/install_audio_backends.sh + docs/ALTERNATIVE_LOESUNGSWEGE.md A)
+# Phase 3: persistent state (dist/audio_host_state.json), retry+circuit-breaker, watchdog 5s, daemon registry
+# Phase 5: graceful degradation, bug_report, log rotation
 
 [dependencies]
 # Audio backends — alles ohne ASIO-SDK compilierbar:
 # - Linux: ALSA (alsa) + PipeWire/JACK via RT-Kit
 # - macOS: CoreAudio (coreaudio-rs)
 # - Windows: WASAPI Exclusive (cpal/wasapi) — ASIO (asio-sys) nur optional
-# Für CI reicht der Shim (desktop/src/audio_host.rs) ohne externe crates
+# Für CI reicht der Shim (desktop/src/audio_host.rs) ohne externe crates — probe_devices_with_timeout nutzt 5s Watchdog + retry 3
 
 [features]
 default = []
 wasapi = []      # Windows WASAPI Exclusive (primär, ohne ASIO)
-asio = []        # Windows ASIO — erfordert Steinberg SDK in vendor/asio-sdk
+asio = []        # Windows ASIO — erfordert Steinberg SDK in vendor/asio-sdk (Steinberg Lizenz)
 alsa = []        # Linux ALSA/PipeWire/JACK
 coreaudio = []   # macOS CoreAudio
 

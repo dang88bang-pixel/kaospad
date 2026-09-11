@@ -1,0 +1,27 @@
+[package]
+name = "kaoss-desktop"
+version = "5.0.0"
+edition = "2021"
+license = "MIT"
+description = "Kaoss desktop host — WASAPI Exclusive / ALSA / PipeWire / JACK — ASIO optional via vendor SDK"
+# Alternative Lösungswege A: ASIO SDK (Steinberg) → RtAudio/PortAudio/JACK/WASAPI Exclusive
+# WASAPI Exclusive ist primär, ASIO nur für Windows-Pro-Users (siehe scripts/install_audio_backends.sh)
+
+[dependencies]
+# Audio backends — alles ohne ASIO-SDK compilierbar:
+# - Linux: ALSA (alsa) + PipeWire/JACK via RT-Kit
+# - macOS: CoreAudio (coreaudio-rs)
+# - Windows: WASAPI Exclusive (cpal/wasapi) — ASIO (asio-sys) nur optional
+# Für CI reicht der Shim (desktop/src/audio_host.rs) ohne externe crates
+
+[features]
+default = []
+wasapi = []      # Windows WASAPI Exclusive (primär, ohne ASIO)
+asio = []        # Windows ASIO — erfordert Steinberg SDK in vendor/asio-sdk
+alsa = []        # Linux ALSA/PipeWire/JACK
+coreaudio = []   # macOS CoreAudio
+
+# Optional crates (nicht in default, damit CI offline ohne SDK baut):
+# cpal = { version = "0.15", optional = true }
+# rtaudio = { version = "0.1", optional = true }
+# portaudio = { version = "0.1", optional = true }

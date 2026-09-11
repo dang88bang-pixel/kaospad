@@ -1,1 +1,19 @@
-{"name":"Korg Kaoss AI Beatbox Studio","short_name":"Kaoss Studio","start_url":"./index.html","display":"standalone","background_color":"#111318","theme_color":"#ff7a00","icons":[]}
+{
+  "name": "Korg Kaoss AI Beatbox Studio",
+  "short_name": "Kaoss Studio",
+  "description": "Offline-first Kaoss Pad & AI Beatbox with NeuralLift-360 3D Dance Suite — zero-cloud PWA",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#111318",
+  "theme_color": "#ff7a00",
+  "categories": ["music", "entertainment"],
+  "icons": [
+    { "src": "./src/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "./src/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Vollständige Kette", "url": "./index.html#chain", "description": "Run full action & interaction chain" }
+  ]
+}

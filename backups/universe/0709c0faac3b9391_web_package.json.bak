@@ -1,0 +1,26 @@
+{
+  "name": "kaoss-web-pwa",
+  "version": "5.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline-first Kaoss/AI-Beatbox PWA. type=module erlaubt es, web/src/action-chain.js sowohl im Browser als auch headless in Node (tests/action_chain_ui_test.mjs) als ES-Modul zu laden.",
+  "scripts": {
+    "dev": "python3 ../app.py --host 0.0.0.0 --port 8080",
+    "test": "node tests/action_chain_ui_test.mjs && node tests/web_ui_interaction_chain_test.mjs",
+    "test:unit": "node tests/action_chain_ui_test.mjs",
+    "test:e2e": "node tests/web_ui_interaction_chain_test.mjs",
+    "lint": "eslint web/src --ext .js || echo \"lint: eslint not installed, skip\"",
+    "build": "../scripts/build_wasm.sh || echo \"build: emcc missing — js-mirror fallback\"",
+    "pwa:package": "../scripts/package_web_pwa.sh",
+    "serve": "python3 -m http.server 8000 --directory web"
+  },
+  "keywords": ["kaoss", "beatbox", "dsp", "pwa", "offline", "webaudio", "wasm"],
+  "author": "Kaoss Studio",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "browserslist": ["last 2 Chrome versions", "last 2 Firefox versions", "last 2 Safari versions"],
+  "devDependencies": {},
+  "dependencies": {}
+}
