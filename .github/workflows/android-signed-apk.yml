@@ -191,7 +191,44 @@ jobs:
         working-directory: android
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
-        run: gradle :app:assembleRelease --no-daemon --stacktrace --warning-mode=summary
+        run: |
+          set -euo pipefail
+          mkdir -p ../dist-release
+          gradle :app:assembleRelease --no-daemon --stacktrace --warning-mode=summary 2>&1 \
+            | tee ../dist-release/gradle-assemble.log
+
+      - name: Fehlerdiagnose (Gradle-Log als Annotationen)
+        if: failure()
+        run: |
+          set -uo pipefail
+          # Log-Download ist aus manchen Netzen blockiert; Annotationen sind es nicht.
+          emit_lines() {
+            local line
+            while IFS= read -r line; do
+              [ -z "${line}" ] && continue
+              line="${line//'%'/'%25'}"
+              printf '::error title=Build-Log::%s\n' "${line:0:460}"
+            done <<< "$1"
+          }
+          for LOG in dist-release/gradle-assemble.log dist-release/gradle-bundle.log; do
+            [ -f "${LOG}" ] || continue
+            echo "===== ${LOG} ====="
+            FIRST="$(grep -nE "^e: |error:|\* What went wrong|Execution failed for task|ninja: build stopped|Lint found" "${LOG}" | head -1 | cut -d: -f1)"
+            if [ -n "${FIRST}" ]; then
+              START=$(( FIRST > 6 ? FIRST - 6 : 1 ))
+              CONTEXT="$(sed -n "${START},$(( FIRST + 45 ))p" "${LOG}")"
+            else
+              CONTEXT="$(tail -50 "${LOG}")"
+            fi
+            {
+              echo "### Gradle-Fehler aus \`${LOG}\`"
+              echo ""
+              echo '```'
+              printf '%s\n' "${CONTEXT}"
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            emit_lines "${CONTEXT}"
+          done
 
       - name: Explizit mit apksigner signieren (v1 + v2 + v3)
         run: |
@@ -272,7 +309,11 @@ jobs:
         working-directory: android
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
-        run: gradle :app:bundleRelease --no-daemon --stacktrace --warning-mode=summary
+        run: |
+          set -uo pipefail
+          mkdir -p ../dist-release
+          gradle :app:bundleRelease --no-daemon --stacktrace --warning-mode=summary 2>&1 \
+            | tee ../dist-release/gradle-bundle.log
 
       - name: AAB pruefen und staging
         if: steps.bundle.outcome == 'success'
