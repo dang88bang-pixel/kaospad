@@ -1,9 +1,14 @@
 FROM debian:bookworm-slim
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake ninja-build python3 nodejs npm zip ca-certificates \
+    build-essential cmake ninja-build python3 nodejs npm zip ca-certificates jq alsa-utils pipewire-bin \
   && rm -rf /var/lib/apt/lists/*
+# Alternative G: Emscripten/WASM via Docker statt lokaler Installation
+#   docker run --rm -v $PWD:/src emscripten/emsdk bash build_wasm.sh
+#   oder lokale Alternative: ./scripts/build_wasm_docker.sh (Wrapper)
+# Alternative A/I/J: RtAudio/PortAudio/JACK/WASAPI-Exklusiv statt ASIO SDK,
+#   Virtual-Cable Loopback (snd-aloop/pw-loopback/BlackHole), Checksum-Manifest
 WORKDIR /src
 COPY . .
-RUN make test-native-dsp-latency && make test-offline-daemons && make test-web
+RUN make test-native-dsp-latency && make test-offline-daemons && make test-web && ./scripts/test_audio_loopback.sh dsp
 CMD ["make", "release-bundle"]

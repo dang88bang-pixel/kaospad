@@ -2,6 +2,9 @@
 
 Offline-first scaffold for a multi-platform Kaoss-style beatbox, DSP, localhost IPC and 3D avatar performance suite.
 
+> **Alternative Lösungswege für Blocker** — alle ⛔-Zeilen pragmatisch umgehbar ohne teure Lizenzen/exotische Hardware:
+> [`docs/ALTERNATIVE_LOESUNGSWEGE.md`](docs/ALTERNATIVE_LOESUNGSWEGE.md) · Schnellstart: [`docs/INSTALLATION.md`](docs/INSTALLATION.md)
+
 ## Projektstatus / vollständige TODO-Dokumentation
 
 Der aktuelle Implementierungsstand, alle fehlenden Parts, Native-/Hardware-Anbindungen,
@@ -49,10 +52,34 @@ make test-web-ui-chain
 make test-zero-cloud
 ```
 
-Prepare deterministic offline model placeholders:
+### Schnellstart-Workaround (alles ohne ⛔ — keine Lizenzen/Hardware nötig)
+
+```bash
+# 1. Open-Source-Modelle pullen (Whisper-tiny, MiDaS, MediaPipe) — offline Fallback
+./scripts/download_open_models.sh   # Whisper-tiny, MiDaS, MediaPipe
+
+# 2. Selbstsigniert bauen (CI_SIGNING=false → kein Signing nötig)
+./gradlew assembleDebug -Psigning=false
+# offline ohne Gradle:
+python3 scripts/build_signed_apk.py
+
+# 3. Per ADB installieren (kein Store)
+adb install app/build/outputs/apk/debug/app-debug.apk
+
+# 4. Audio-Loopback testen (Linux)
+pw-dump | jq '.[] | select(.name=="alsa_output...")'
+./scripts/test_audio_loopback.sh
+
+# oder alles in einem:
+./scripts/quickstart_workaround.sh
+```
+Details: [`docs/ALTERNATIVE_LOESUNGSWEGE.md`](docs/ALTERNATIVE_LOESUNGSWEGE.md) und [`docs/INSTALLATION.md`](docs/INSTALLATION.md).
+
+Prepare deterministic offline model placeholders (Alt):
 
 ```bash
 python3 engines/neurallift_360/scripts/download_weights.py --target=dist/offline-models
+./scripts/download_open_models.sh --offline   # TFL3 Platzhalter, zero-cloud
 ```
 
 Build the Linux scaffold bundle:

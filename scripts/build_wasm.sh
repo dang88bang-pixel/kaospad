@@ -3,6 +3,10 @@
 # fallback. Requires Emscripten (emcc). Runs on the CI runner or a developer
 # machine; the web UI degrades to the pure-JS DSP mirror when the module is
 # absent (zero-cloud offline cache).
+#
+# Alternative Lösungswege G: Emscripten/WASM → Docker statt lokaler Installation:
+#   docker run --rm -v $PWD:/src emscripten/emsdk bash build_wasm.sh
+#   oder: ./scripts/build_wasm_docker.sh (Wrapper)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."

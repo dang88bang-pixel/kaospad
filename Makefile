@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk test-gradle-wrapper test-native-audio-bridge test-release-guard
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk test-gradle-wrapper test-native-audio-bridge test-release-guard download-open-models test-audio-loopback checksums sign-gpg workaround quickstart
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -91,6 +91,26 @@ run-localhost-ipc:
 release-bundle: test
 	python3 engines/neurallift_360/scripts/download_weights.py --target=dist/offline-models
 	./scripts/build_appimage.sh
+
+# Alternative Lösungswege (docs/ALTERNATIVE_LOESUNGSWEGE.md) — alles ohne ⛔
+download-open-models:
+	./scripts/download_open_models.sh --target dist/offline-models
+
+test-audio-loopback:
+	./scripts/test_audio_loopback.sh
+
+checksums:
+	./scripts/generate_checksums.sh dist/offline-models
+	python3 scripts/generate_sbom.py
+
+sign-gpg:
+	./scripts/sign_release_gpg.sh dist
+
+workaround quickstart:
+	./scripts/quickstart_workaround.sh
+
+install-toolchains:
+	./scripts/install_toolchains.sh
 
 clean:
 	rm -rf build dist

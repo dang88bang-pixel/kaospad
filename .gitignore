@@ -5,6 +5,7 @@ android/.gradle/
 android/app/build/
 android/signing/*-key.pem
 android/signing/*.der
+android/signing/debug.jks
 target/
 node_modules/
 *.log
@@ -12,3 +13,20 @@ node_modules/
 
 __pycache__/
 *.py[cod]
+
+# J · Modelle in assets/tmp/ per Script herunterladen, .gitignore-d
+assets/tmp/
+assets/samples/
+dist/offline-models/
+dist/avatars/
+dist/sessions/
+
+# Vendor SDKs (ASIO) — shim statt echter SDK
+vendor/asio-sdk/
+
+# Checksums local
+SHA256SUMS.txt
+
+# Loopback test dumps
+pw-dump.json
+

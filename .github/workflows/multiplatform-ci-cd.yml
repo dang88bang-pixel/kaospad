@@ -62,10 +62,14 @@ jobs:
             "ndk;26.1.10909125" \
             "cmake;3.22.1"
 
-      - name: Set up Gradle 8.7
+      - name: Set up Gradle 8.7 (Alternative G: gradle wrapper offline → setup-gradle)
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+          # Alternative zu lokalem gradle-wrapper.jar (offline Block):
+          # lokal: gradle --no-daemon wrapper --gradle-version 8.7
+          #        sdkman install gradle 8.7
+          # CI:    dieser Step ersetzt das Jar; siehe scripts/fetch_gradle_wrapper.sh / verify_gradle_wrapper.py
 
       - name: Sync PWA + WASM into Android assets
         run: |
@@ -79,15 +83,21 @@ jobs:
             echo "ndk.dir=${ANDROID_HOME}/ndk/26.1.10909125"
           } > android/local.properties
 
-      - name: Prepare signing keystore
+      - name: Prepare signing keystore (Alternative H: CI_SIGNING=false → unsigniert)
         env:
           KAOSS_KEYSTORE_BASE64: ${{ secrets.KAOSS_KEYSTORE_BASE64 }}
+          CI_SIGNING: ${{ vars.CI_SIGNING || 'true' }}
         run: |
           set -euo pipefail
+          if [[ "${CI_SIGNING:-true}" == "false" ]]; then
+            echo "CI_SIGNING=false → skip keystore, build unsigned (manuell signieren bei Release)"
+            exit 0
+          fi
           KS="${RUNNER_TEMP}/kaoss-release.jks"
           if [ -n "${KAOSS_KEYSTORE_BASE64:-}" ]; then
             echo "${KAOSS_KEYSTORE_BASE64}" | base64 -d > "${KS}"
           else
+            # Alternative A Signing-Zertifikate: keytool self-signed für Dev/CI
             keytool -genkeypair -keystore "${KS}" -alias kaoss \
               -keyalg RSA -keysize 2048 -validity 3650 \
               -storepass android -keypass android \
@@ -98,11 +108,17 @@ jobs:
           echo "KAOSS_KEY_ALIAS=${KAOSS_KEY_ALIAS:-kaoss}" >> "${GITHUB_ENV}"
           echo "KAOSS_KEY_PASSWORD=${KAOSS_KEY_PASSWORD:-android}" >> "${GITHUB_ENV}"
 
-      - name: Gradle assembleRelease + bundleRelease
+      - name: Gradle assembleRelease + bundleRelease (Alternative H: CI_SIGNING=false → -Psigning=false)
         working-directory: android
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.1.10909125
-        run: gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+          CI_SIGNING: ${{ vars.CI_SIGNING || 'true' }}
+        run: |
+          if [[ "${CI_SIGNING:-true}" == "false" ]]; then
+            gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace -Psigning=false
+          else
+            gradle :app:assembleRelease :app:bundleRelease --no-daemon --stacktrace
+          fi
 
       - name: Guard: real ART APK/AAB with native DSP (no placeholders)
         run: |

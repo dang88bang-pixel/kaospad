@@ -22,9 +22,18 @@ android {
             }
         }
     }
+    // Signing: H · CI/CD Alternative — CI_SIGNING=false oder -Psigning=false → unsigniert bauen
+    // Für Dev/CI ohne Secrets: ./gradlew assembleDebug -Psigning=false oder CI_SIGNING=false gradle assembleDebug
+    // Für Release: Secrets KAOSS_KEYSTORE_* setzen (siehe .github/workflows/multiplatform-ci-cd.yml)
+    // Dev self-signed fallback: keytool -genkeypair -keystore signing/debug.jks -alias kaoss -keyalg RSA -keysize 2048 -validity 3650 -storepass android -keypass android -dname "CN=Kaoss Debug"
     signingConfigs {
+        val signingEnabled = (findProperty("signing")?.toString()?.lowercase() != "false")
+                && (System.getenv("CI_SIGNING")?.lowercase() != "false")
+        if (!signingEnabled) {
+            println("[Kaoss] Signing disabled via -Psigning=false / CI_SIGNING=false — building unsigned")
+        }
         val keystorePath = System.getenv("KAOSS_KEYSTORE_FILE")
-        if (!keystorePath.isNullOrBlank()) {
+        if (signingEnabled && !keystorePath.isNullOrBlank()) {
             create("ciRelease") {
                 storeFile = file(keystorePath)
                 storePassword = System.getenv("KAOSS_KEYSTORE_PASSWORD") ?: "android"
@@ -36,9 +45,13 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            val signingEnabled = (findProperty("signing")?.toString()?.lowercase() != "false")
+                    && (System.getenv("CI_SIGNING")?.lowercase() != "false")
             val ci = signingConfigs.findByName("ciRelease")
-            if (ci != null) {
+            if (signingEnabled && ci != null) {
                 signingConfig = ci
+            } else if (!signingEnabled) {
+                println("[Kaoss] release build unsigned (CI_SIGNING=false)")
             }
         }
     }
