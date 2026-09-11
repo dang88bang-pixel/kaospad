@@ -21,6 +21,7 @@ class KaossJsBridge(private val activity: MainActivity) {
     )
     private var activePort = 8080
     private val loaded = mutableSetOf(8080)
+    private val audioInput = AudioInputController(activity)
 
     @JavascriptInterface
     fun portStatus(port: Int): String {
@@ -63,4 +64,37 @@ class KaossJsBridge(private val activity: MainActivity) {
             "{\"locked\":true,\"roundtrip_ms\":1.2,\"route\":\"127.0.0.1:8081\",\"native_bridge\":true}"
         }
     }
+
+    // ------------------------------------------------------------------ //
+    // Live Audio-Input -> DSP (Phase A)
+    // ------------------------------------------------------------------ //
+
+    @JavascriptInterface
+    fun startAudioCapture(sampleRateHz: Int, frames: Int, source: Int): String =
+        audioInput.start(sampleRateHz, frames, source)
+
+    @JavascriptInterface
+    fun stopAudioCapture(): String {
+        audioInput.stop()
+        return "{\"stopped\":true}"
+    }
+
+    @JavascriptInterface
+    fun audioCaptureStatus(): String = audioInput.status()
+
+    // ------------------------------------------------------------------ //
+    // OS device matrix: USB hotplug + BLE codec negotiation + permissions
+    // ------------------------------------------------------------------ //
+
+    @JavascriptInterface
+    fun usbSnapshot(): String = UsbUac2Client(activity).snapshot()
+
+    @JavascriptInterface
+    fun bleNegotiate(preferred: String): String = BleCodecClient.negotiate(preferred)
+
+    @JavascriptInterface
+    fun permissionState(): String = JSONObject(activity.permissionGrants()).toString()
+
+    @JavascriptInterface
+    fun oboeExclusive(sampleRateHz: Double, frames: Int): String = KaossNative.oboeExclusive(sampleRateHz, frames)
 }

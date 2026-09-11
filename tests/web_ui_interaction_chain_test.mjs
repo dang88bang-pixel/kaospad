@@ -614,6 +614,56 @@ const logs = await (await realFetch(`${baseUrl}/api/logs`)).json();
 check('server logs show chain', logs.logs.some((line) => line.includes('session.export')), logs.logs.slice(-3));
 check('server logs chain summary', logs.logs.some((line) => line.startsWith('CHAIN ')), logs.logs.slice(-1));
 
+// --------------------------------------------------------------------------- //
+// 5. SCREEN_6 / SCREEN_14 / SCREEN_29 Katalog-Checks
+// --------------------------------------------------------------------------- //
+// SCREEN_29: 8x8 LED Matrix + Quad FX Readouts
+check('led matrix has 64 cells', el('led-matrix').querySelectorAll('.led').length === 64, el('led-matrix').querySelectorAll('.led').length);
+check('led matrix painted', el('led-matrix').querySelectorAll('.led').some((cell) => /on-(amber|cyan|green)/.test(cell.className)), el('led-matrix').querySelectorAll('.led').map((cell) => cell.className).filter((name) => /on-/.test(name)).slice(0, 8));
+check('quad readout fx3 shows xy', el('quad-readout-2').value.includes('X 0.82'), el('quad-readout-2').value);
+check('quad readout fx1 freeze label', el('quad-readout-0').value.includes('FROZEN'), el('quad-readout-0').value);
+
+// SCREEN_6: Daemon PID + Restart
+check('port cards have restart buttons', (el('port-grid').innerHTML.match(/port-restart/g) || []).length === 6, el('port-grid').innerHTML.slice(0, 200));
+check('port cards show pid', el('port-grid').innerHTML.includes('pid '), el('port-grid').innerHTML.slice(0, 300));
+{
+  const restart = await realFetch(`${baseUrl}/api/daemons/restart`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ port: 8084 }),
+  });
+  const restartPayload = await restart.json();
+  check('daemon restart ok', restartPayload.ok === true && restartPayload.restarts >= 1, restartPayload);
+  const daemons = await (await realFetch(`${baseUrl}/api/daemons`)).json();
+  check('daemon registry has 6 in-process daemons', daemons.daemons.length === 6 && daemons.daemons.every((d) => d.in_process === true && d.pid > 0), daemons.daemons.length);
+}
+
+// SCREEN_14: Device-Detail-Drawer + Overrides + Kalibrierung
+{
+  const firstCard = el('device-grid').querySelectorAll('.device-card')[0];
+  el('device-grid').dispatchEvent('click', { target: firstCard });
+  await settle();
+  check('device detail drawer rendered', el('device-detail').innerHTML.includes('EFFEKTIVE LATENZ'), el('device-detail').innerHTML.slice(0, 200));
+  check('device detail shows route', el('device-detail').innerHTML.includes('route'), el('device-detail').innerHTML.slice(0, 300));
+}
+{
+  const calibration = await (await realFetch(`${baseUrl}/api/audio/calibrate`)).json();
+  check('calibration roundtrip measured', calibration.ok === true && calibration.direct_pipe_roundtrip_ms > 0, calibration);
+  el('calibrate').click();
+  await settle(400);
+  check('calibration output updated', /CAL:/.test(el('calibration-output').value), el('calibration-output').value);
+}
+{
+  el('input-gain').value = '120';
+  el('input-gain').dispatchEvent('input');
+  await settle();
+  check('input gain readout', el('input-gain-out').value === '1.20', el('input-gain-out').value);
+  el('bt-compensation').value = '42';
+  el('bt-compensation').dispatchEvent('input');
+  await settle();
+  check('bt compensation readout', el('bt-comp-output').value === '42 ms', el('bt-comp-output').value);
+}
+
 console.log(JSON.stringify({
   ui_checks: checks.length,
   chain_steps: summary.length,

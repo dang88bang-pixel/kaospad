@@ -1,3 +1,4 @@
+#include "audio_input_engine.hpp"
 #include "kaoss_dsp.hpp"
 
 #include <jni.h>
@@ -82,5 +83,64 @@ Java_com_kaoss_studio_KaossNative_oboeExclusive(JNIEnv* env, jclass /*clazz*/, j
        << (status.exclusive ? "true" : "false") << ",\"burst_ms\":" << status.burst_ms
        << ",\"roundtrip_ms\":" << status.roundtrip_ms << ",\"xrun_count\":" << status.xrun_count
        << ",\"route\":\"" << json_escape(status.route) << "\"}";
+  return to_jstring(env, json.str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_kaoss_studio_KaossNative_startAudioInput(JNIEnv* env, jclass /*clazz*/, jdouble sample_rate,
+                                                  jint frames, jint source) {
+  kaoss::AudioInputConfig cfg;
+  cfg.sample_rate_hz = sample_rate;
+  cfg.frames_per_burst = static_cast<std::uint32_t>(frames);
+  cfg.source = static_cast<kaoss::AudioInputSource>(source);
+  const bool started = kaoss::audio_input_start(cfg);
+  const auto status = kaoss::audio_input_status();
+  std::ostringstream json;
+  json << "{\"started\":" << (started ? "true" : "false")
+       << ",\"native_aaudio\":" << (status.native_aaudio ? "true" : "false")
+       << ",\"exclusive\":" << (status.exclusive ? "true" : "false")
+       << ",\"backend\":\"" << json_escape(status.backend) << "\""
+       << ",\"route\":\"" << json_escape(status.route) << "\""
+       << ",\"sample_rate_hz\":" << status.sample_rate_hz
+       << ",\"frames_per_burst\":" << status.frames_per_burst << "}";
+  return to_jstring(env, json.str());
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_kaoss_studio_KaossNative_stopAudioInput(JNIEnv* /*env*/, jclass /*clazz*/) {
+  kaoss::audio_input_stop();
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_kaoss_studio_KaossNative_audioInputStatus(JNIEnv* env, jclass /*clazz*/) {
+  const auto status = kaoss::audio_input_status();
+  std::ostringstream json;
+  json << "{\"running\":" << (status.running ? "true" : "false")
+       << ",\"native_aaudio\":" << (status.native_aaudio ? "true" : "false")
+       << ",\"exclusive\":" << (status.exclusive ? "true" : "false")
+       << ",\"fallback_audiorecord\":" << (status.fallback_audiorecord ? "true" : "false")
+       << ",\"backend\":\"" << json_escape(status.backend) << "\""
+       << ",\"route\":\"" << json_escape(status.route) << "\""
+       << ",\"sample_rate_hz\":" << status.sample_rate_hz
+       << ",\"frames_per_burst\":" << status.frames_per_burst
+       << ",\"blocks\":" << status.blocks << ",\"xruns\":" << status.xruns
+       << ",\"peak_dbfs\":" << status.peak_dbfs << ",\"rms_dbfs\":" << status.rms_dbfs
+       << ",\"last_transient\":\"" << json_escape(status.last_transient) << "\"}";
+  return to_jstring(env, json.str());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_kaoss_studio_KaossNative_processAudioBlock(JNIEnv* env, jclass /*clazz*/, jfloatArray input) {
+  const jsize n = env->GetArrayLength(input);
+  std::vector<float> pcm(static_cast<std::size_t>(n));
+  env->GetFloatArrayRegion(input, 0, n, pcm.data());
+  const auto report = kaoss::audio_input_push_block(pcm.data(), pcm.size());
+  std::ostringstream json;
+  json << "{\"peak_dbfs\":" << report.peak_dbfs << ",\"input_peak_dbfs\":" << report.input_peak_dbfs
+       << ",\"rms_dbfs\":" << report.rms_dbfs << ",\"transient\":\"" << json_escape(report.transient)
+       << "\",\"transient_frequency_hz\":" << report.transient_frequency_hz
+       << ",\"limiter_active\":" << (report.limiter_active ? "true" : "false")
+       << ",\"frames\":" << report.frames << ",\"blocks\":" << report.block_index
+       << ",\"checksum\":" << report.checksum << ",\"xruns\":" << kaoss::audio_input_status().xruns << "}";
   return to_jstring(env, json.str());
 }
