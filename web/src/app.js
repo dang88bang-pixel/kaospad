@@ -46,15 +46,43 @@ const DAEMONS = [
 
 if (globalThis.KaossNativeBridge && !globalThis.__KAOSS_NATIVE_BRIDGE__) {
   const native = globalThis.KaossNativeBridge;
+  const parse = (raw) => (typeof raw === 'string' ? JSON.parse(raw) : raw);
   globalThis.__KAOSS_NATIVE_BRIDGE__ = {
     portStatus(port) {
-      const raw = native.portStatus(port);
-      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parse(native.portStatus(port));
     },
     loadPortForAction(action) {
       if (!native.loadPortForAction) return null;
-      const raw = native.loadPortForAction(action);
-      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return parse(native.loadPortForAction(action));
+    },
+    // Phase A: echter Audio-Input -> DSP über AAudio/AudioRecord.
+    startAudioCapture(sampleRateHz, frames, source) {
+      if (!native.startAudioCapture) return null;
+      return parse(native.startAudioCapture(sampleRateHz, frames, source));
+    },
+    stopAudioCapture() {
+      if (!native.stopAudioCapture) return null;
+      return parse(native.stopAudioCapture());
+    },
+    audioCaptureStatus() {
+      if (!native.audioCaptureStatus) return null;
+      return parse(native.audioCaptureStatus());
+    },
+    usbSnapshot() {
+      if (!native.usbSnapshot) return null;
+      return parse(native.usbSnapshot());
+    },
+    bleNegotiate(codec) {
+      if (!native.bleNegotiate) return null;
+      return parse(native.bleNegotiate(codec));
+    },
+    permissionState() {
+      if (!native.permissionState) return null;
+      return parse(native.permissionState());
+    },
+    oboeExclusive(sampleRateHz, frames) {
+      if (!native.oboeExclusive) return null;
+      return parse(native.oboeExclusive(sampleRateHz, frames));
     },
   };
 }
@@ -113,13 +141,17 @@ function renderPortCard(spec, status) {
   const active = status.status === 'ACTIVE' ? ' active' : '';
   const hits = status.chain_hits ? ` // ${status.chain_hits} chain hits` : '';
   const task = status.loaded_action || spec.task || '';
+  const pid = status.pid != null ? ` // pid ${status.pid}` : '';
+  const restarts = status.restarts ? ` // ${status.restarts} restarts` : '';
+  const health = status.health ? ` // ${status.health}` : '';
   return `
     <article class="port-card ${tone}${active}" data-port="${spec.port}">
       <div class="port-head"><span>:${spec.port}</span><b>${status.status}</b></div>
       <strong>${spec.name}</strong>
       <small>${spec.protocol}</small>
       <p>${spec.rule}${task ? ` // ${task}` : ''}</p>
-      <code>${status.bind || '127.0.0.1'}:${spec.port} // ${status.latency || 'AUTO'}${hits}</code>
+      <code>${status.bind || '127.0.0.1'}:${spec.port} // ${status.latency || 'AUTO'}${hits}${pid}${restarts}${health}</code>
+      <button class="port-restart" type="button" data-port="${spec.port}">RESTART</button>
     </article>
   `;
 }
@@ -138,6 +170,29 @@ async function refreshPortView() {
 document.querySelector('#portview-auto').addEventListener('click', refreshPortView);
 refreshPortView();
 setInterval(refreshPortView, 4000);
+
+// SCREEN_6: Daemon-Restart (logisch in-process) + PID-Monitor.
+portGrid.addEventListener('click', async (event) => {
+  const target = event.target || event.currentTarget;
+  const button = target?.classList?.contains('port-restart') ? target : null;
+  if (!button) return;
+  const port = button.dataset.port;
+  try {
+    const response = await fetch('/api/daemons/restart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ port: Number(port) }),
+    });
+    const payload = await response.json();
+    bridgeMode.value = payload.ok
+      ? `DAEMON :${port} RESTART // ${payload.logical_restart ? 'logical in-process' : 'restarted'}`
+      : `DAEMON :${port} RESTART FAILED`;
+  } catch (error) {
+    bridgeMode.value = `DAEMON :${port} RESTART ERROR ${error.message}`;
+  }
+  refreshPortView();
+});
 
 // --------------------------------------------------------------------------- //
 // Aktions- & Interaktionskette
@@ -181,6 +236,8 @@ function renderChain(event) {
   chainLog.textContent = lines.length ? lines.join('\n') : 'CHAIN // noch keine Aktion – starte die vollständige Kette';
   chainLog.scrollTop = chainLog.scrollHeight;
   syncFreezeButtons();
+  renderQuadReadouts();
+  paintLedMatrix();
   if (event) flashAction(event);
 }
 
@@ -346,6 +403,57 @@ document.querySelectorAll('.freeze').forEach((button) => {
 });
 
 // --------------------------------------------------------------------------- //
+// SCREEN_29: 8x8 LED Matrix + Quad FX Readouts (KP3+-Stil)
+// --------------------------------------------------------------------------- //
+const ledMatrix = document.querySelector('#led-matrix');
+let ledCells = [];
+let ledFlash = { kind_name: 'NONE', ts: 0 };
+
+function initLedMatrix() {
+  if (!ledMatrix) return;
+  ledMatrix.innerHTML = Array.from({ length: 64 }, (_, index) => `<i class="led" data-led="${index}"></i>`).join('');
+  ledCells = ledMatrix.querySelectorAll('.led') || [];
+}
+
+function paintLedMatrix() {
+  if (!ledMatrix || !ledCells.length) return;
+  const modules = chainState.kaoss.modules || [];
+  const m2 = modules[2] || { x: 0.5, y: 0.5 };
+  const m3 = modules[3] || { x: 0.5, y: 0.5 };
+  const col = Math.max(0, Math.min(7, Math.floor(m2.x * 8)));
+  const row = Math.max(0, Math.min(7, Math.floor((1 - m3.y) * 8)));
+  const frozenCount = modules.filter((module) => module.frozen).length;
+  const flashAge = Date.now() - ledFlash.ts;
+  const flashKind = flashAge < 350 ? ledFlash.kind_name : 'NONE';
+  const flashLimit = flashKind === 'KICK808' ? 2 : flashKind === 'SNARE_CLAP' ? 4 : flashKind === 'HAT_ROLL' ? 6 : -1;
+
+  ledCells.forEach((cell, index) => {
+    const cx = index % 8;
+    const cy = Math.floor(index / 8);
+    let cls = '';
+    if (cx === col && cy === row) cls = 'on-amber';
+    else if (cx === col || cy === row) cls = 'on-cyan';
+    if (flashLimit >= 0 && cy === 7 && cx <= flashLimit) cls = flashKind === 'KICK808' ? 'on-amber' : 'on-cyan';
+    if (cy === 0 && cx < frozenCount) cls = 'on-green';
+    cell.className = `led${cls ? ` ${cls}` : ''}`;
+  });
+}
+
+function renderQuadReadouts() {
+  const modules = chainState.kaoss.modules || [];
+  const names = ['FX1 LOOPER', 'FX2 VINYL', 'FX3 FILTER', 'FX4 TAPE ECHO'];
+  modules.forEach((module, index) => {
+    const out = document.querySelector(`#quad-readout-${index}`);
+    if (!out) return;
+    const x = module.x.toFixed(2);
+    const y = module.y.toFixed(2);
+    out.value = `${names[index]} // X ${x} / Y ${y}${module.frozen ? ' // FROZEN' : ''}`;
+  });
+}
+
+initLedMatrix();
+
+// --------------------------------------------------------------------------- //
 // Sample Bank Pads A-D
 // --------------------------------------------------------------------------- //
 const padGrid = document.querySelector('#pad-grid');
@@ -441,7 +549,28 @@ liveEngine = new WebAudioCypherEngine({
     meterFill.style.width = `${pct}%`;
     meterReadout.value = `PEAK: ${dbfs.toFixed(1)} dBFS`;
   },
+  onTransient: (result) => {
+    if (!result || result.kind_name === 'NONE') return;
+    ledFlash = { kind_name: result.kind_name, ts: Date.now() };
+    paintLedMatrix();
+  },
 });
+
+// Native Capture Bridge (Android WebView): AAudio/AudioRecord-Status live anzeigen.
+if (bridge?.audioCaptureStatus) {
+  const pollNativeCapture = () => {
+    try {
+      const status = bridge.audioCaptureStatus();
+      if (!status) return;
+      const state = status.running ? 'RUNNING' : 'STOPPED';
+      const backend = status.native_aaudio ? 'AAudio' : status.fallback_audiorecord ? 'AudioRecord' : status.backend || '—';
+      audioState.value = `NATIVE: ${state} // ${backend} // blocks ${status.blocks || 0} // xruns ${status.xruns || 0} // ${Number(status.peak_dbfs || -120).toFixed(1)} dBFS`;
+    } catch {
+      /* Bridge optional: im Browser nicht vorhanden. */
+    }
+  };
+  setInterval(pollNativeCapture, 2000);
+}
 
 async function populateBrowserInputs() {
   try {
@@ -468,7 +597,11 @@ document.querySelector('#start-audio').addEventListener('click', async () => {
 
 document.querySelector('#arm-mic').addEventListener('click', async () => {
   try {
-    await liveEngine.armMic(browserDeviceSelect.value);
+    await liveEngine.armMic(browserDeviceSelect.value, {
+      noiseSuppression,
+      autoGainControl: micAgc,
+      inputGain: Number(labInputGain),
+    });
     await populateBrowserInputs();
     const event = await dispatchAction('mic.arm', { device_id: browserDeviceSelect.value || 'browser-default' });
     if (event.status === 'BLOCKED') audioState.value = `MIC BLOCKED: ${event.detail?.missing_milestones?.join(', ')}`;
@@ -519,6 +652,16 @@ const inputSelect = document.querySelector('#input-select');
 const deviceGrid = document.querySelector('#device-grid');
 const permissionGrid = document.querySelector('#permission-grid');
 const permissionMode = document.querySelector('#permission-mode');
+const deviceDetail = document.querySelector('#device-detail');
+const calibrationOutput = document.querySelector('#calibration-output');
+
+// SCREEN_14 Labor-Controls (Device-Kalibrierung & Overrides).
+let btCompensationMs = 12;
+let usbRateOverride = 48000;
+let labInputGain = 0.78;
+let micAgc = false;
+let noiseSuppression = false;
+let lastDeviceStatus = null;
 
 function fallbackDeviceStatus(selected = inputSelect?.value || 'internal_mic') {
   const permissionRows = [
@@ -561,13 +704,17 @@ async function readDeviceStatus(selected = inputSelect.value) {
 
 function renderDevice(device) {
   const active = device.status === 'LOCKED';
+  const effectiveLatency = device.id === 'bluetooth_client'
+    ? (Number(device.latency_ms) + btCompensationMs).toFixed(1)
+    : Number(device.latency_ms).toFixed(1);
+  const rateNote = device.id === 'usb_c_audio' ? ` // override ${(usbRateOverride / 1000).toFixed(1)} kHz` : '';
   return `
-    <article class="device-card ${active ? 'locked' : ''}">
+    <article class="device-card ${active ? 'locked' : ''}" data-device-id="${device.id}">
       <div class="port-head"><span>${device.id.replaceAll('_', ' ')}</span><b>${device.status}</b></div>
       <strong>${device.label}</strong>
       <small>${device.sample_rate_hz / 1000} kHz // ${device.bit_depth}</small>
       <p>${device.route}</p>
-      <code>${device.latency_ms} ms // ${device.configurable ? 'konfigurierbar' : 'fest'}</code>
+      <code>${effectiveLatency} ms // ${device.configurable ? 'konfigurierbar' : 'fest'}${rateNote}</code>
     </article>
   `;
 }
@@ -584,6 +731,7 @@ function renderPermission(permission) {
 
 async function refreshDeviceMatrix() {
   const status = await readDeviceStatus(inputSelect.value);
+  lastDeviceStatus = status;
   const micState = await browserMicPermission();
   const permissions = status.permissions.map((permission) =>
     permission.key === 'record_audio'
@@ -607,6 +755,108 @@ document.querySelector('#permission-check').addEventListener('click', async () =
     : `PERMISSION: ALLE BEREIT // ${chainState.input}`;
   refreshDeviceMatrix();
 });
+
+// --------------------------------------------------------------------------- //
+// SCREEN_14: Device-Detail-Drawer, Overrides & Loopback-Kalibrierung
+// --------------------------------------------------------------------------- //
+function closestDeviceCard(node) {
+  let current = node;
+  while (current && current !== deviceGrid) {
+    if (current.dataset?.deviceId) return current;
+    current = current.parentElement || current.parentNode || null;
+  }
+  return null;
+}
+
+function renderDeviceDetail(deviceId) {
+  if (!deviceDetail) return;
+  const status = lastDeviceStatus || {};
+  const device = (status.devices || []).find((item) => item.id === deviceId);
+  if (!device) {
+    deviceDetail.innerHTML = '<article class="device-detail-empty">Wähle ein Gerät für Live-Details (Probe, USB-UAC2, BLE-Codecs, Kalibrierung).</article>';
+    return;
+  }
+  const probe = status.probe || {};
+  const usb = status.usb_uac2 || {};
+  const ble = status.ble_codecs || {};
+  const grants = status.runtime_grants || {};
+  const effectiveLatency = device.id === 'bluetooth_client'
+    ? (Number(device.latency_ms) + btCompensationMs).toFixed(1)
+    : Number(device.latency_ms).toFixed(1);
+  const rateNote = device.id === 'usb_c_audio' ? `${(usbRateOverride / 1000).toFixed(1)} kHz` : '—';
+  const alsaCards = (probe.alsa_cards || []).map((card) => card.name).join(' · ') || 'keine';
+  const usbDevices = (usb.devices || []).map((dev) => `${dev.vid}:${dev.pid} ${dev.product}`).join(' · ') || 'keine';
+  const bleCodecs = (ble.available || []).map((codec) => codec.id).join(' · ') || 'n/a';
+  const grantText = Object.entries(grants).map(([key, value]) => `${key}=${value ? 1 : 0}`).join(' ') || 'n/a';
+  deviceDetail.innerHTML = [
+    `<article><span>${device.label}</span><strong>${device.status}</strong><small>${device.sample_rate_hz / 1000} kHz // ${device.bit_depth}</small><code>${device.route}</code></article>`,
+    `<article><span>EFFEKTIVE LATENZ</span><strong>${effectiveLatency} ms</strong><small>${device.id === 'bluetooth_client' ? `inkl. +${btCompensationMs} ms Kompensation` : 'base route'}</small></article>`,
+    `<article><span>ALSA PROBE</span><strong>${probe.alsa_cards?.length || 0} cards</strong><code>${alsaCards}</code></article>`,
+    `<article><span>USB UAC2 HOTPLUG</span><strong>${usb.count ?? 0} devices</strong><code>${usbDevices}</code></article>`,
+    `<article><span>BLE CODECS</span><strong>${ble.selected?.id || 'lc3plus'}</strong><code>${bleCodecs} // +${ble.compensation_ms ?? 12} ms jitter</code></article>`,
+    `<article><span>OVERRIDES</span><strong>${rateNote}</strong><small>gain ${Number(labInputGain).toFixed(2)} // AGC ${micAgc ? 'ON' : 'OFF'} // NS ${noiseSuppression ? 'ON' : 'OFF'}</small></article>`,
+    `<article><span>PERMISSIONS</span><strong>${Object.values(grants).filter(Boolean).length} granted</strong><code>${grantText}</code></article>`,
+  ].join('');
+}
+
+deviceGrid.addEventListener('click', (event) => {
+  const card = closestDeviceCard(event.target || event.currentTarget);
+  if (!card) return;
+  renderDeviceDetail(card.dataset.deviceId);
+});
+
+const inputGainSlider = document.querySelector('#input-gain');
+const inputGainOut = document.querySelector('#input-gain-out');
+inputGainSlider?.addEventListener('input', () => {
+  labInputGain = (Number(inputGainSlider.value) / 100).toFixed(2);
+  if (inputGainOut) inputGainOut.value = labInputGain;
+  liveEngine.setInputGain(Number(labInputGain));
+});
+
+const monitorMixSlider = document.querySelector('#monitor-mix');
+const monitorMixOut = document.querySelector('#monitor-mix-out');
+monitorMixSlider?.addEventListener('input', () => {
+  if (monitorMixOut) monitorMixOut.value = `${monitorMixSlider.value}%`;
+});
+
+const btCompensationSlider = document.querySelector('#bt-compensation');
+const btCompOutput = document.querySelector('#bt-comp-output');
+btCompensationSlider?.addEventListener('input', () => {
+  btCompensationMs = Number(btCompensationSlider.value);
+  if (btCompOutput) btCompOutput.value = `${btCompensationMs} ms`;
+  refreshDeviceMatrix();
+});
+
+const usbRateSelect = document.querySelector('#usb-rate');
+usbRateSelect?.addEventListener('change', () => {
+  usbRateOverride = Number(usbRateSelect.value);
+  refreshDeviceMatrix();
+});
+
+document.querySelector('#mic-agc')?.addEventListener('change', (event) => { micAgc = Boolean(event.target.checked); });
+document.querySelector('#noise-suppression')?.addEventListener('change', (event) => { noiseSuppression = Boolean(event.target.checked); });
+
+document.querySelector('#calibrate')?.addEventListener('click', async () => {
+  if (calibrationOutput) calibrationOutput.value = 'CAL: MESSE …';
+  try {
+    const response = await fetch('/api/audio/calibrate', { cache: 'no-store' });
+    const payload = await response.json();
+    let local = null;
+    try {
+      local = await liveEngine.measureRoundtrip();
+    } catch {
+      local = null;
+    }
+    const localText = local?.roundtrip_ms != null ? ` // browser loopback ${local.roundtrip_ms} ms` : ' // browser loopback n/a';
+    if (calibrationOutput) {
+      calibrationOutput.value = `CAL: ${payload.method} ${payload.direct_pipe_roundtrip_ms} ms roundtrip${localText}`;
+    }
+    renderDeviceDetail(inputSelect.value);
+  } catch (error) {
+    if (calibrationOutput) calibrationOutput.value = `CAL: FEHLER ${error.message}`;
+  }
+});
+
 refreshDeviceMatrix();
 setInterval(refreshDeviceMatrix, 5000);
 

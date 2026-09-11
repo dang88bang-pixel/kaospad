@@ -66,6 +66,19 @@
       </div>
       <div class="device-grid" id="device-grid"></div>
       <div class="permission-grid" id="permission-grid"></div>
+      <div class="io-lab" aria-label="Device Kalibrierung & Details">
+        <div class="lab-grid">
+          <label class="lab-range">Input Gain <input id="input-gain" type="range" min="0" max="150" value="78" /><output id="input-gain-out">0.78</output></label>
+          <label class="lab-range">Monitor Mix <input id="monitor-mix" type="range" min="0" max="100" value="50" /><output id="monitor-mix-out">50%</output></label>
+          <label class="lab-range">BT Kompensation <input id="bt-compensation" type="range" min="0" max="120" value="12" /><output id="bt-comp-output">12 ms</output></label>
+          <label class="lab-select">USB Sample-Rate <select id="usb-rate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="88200">88.2 kHz</option><option value="96000">96 kHz</option></select></label>
+          <label class="toggle lab-toggle"><input id="mic-agc" type="checkbox" /> Mic AGC</label>
+          <label class="toggle lab-toggle"><input id="noise-suppression" type="checkbox" /> Noise Suppression</label>
+          <button id="calibrate" type="button">LOOPBACK KALIBRIEREN</button>
+          <output id="calibration-output">CAL: --</output>
+        </div>
+        <div class="device-detail" id="device-detail" aria-label="Device Details"></div>
+      </div>
     </section>
 
     <section class="kaoss-console" aria-labelledby="console-title">
@@ -93,6 +106,15 @@
         <button class="freeze" data-module="1" type="button">FX2 VINYL<br><span>FREEZE OFF</span></button>
         <button class="freeze" data-module="2" type="button">FX3 FILTER<br><span>FREEZE OFF</span></button>
         <button class="freeze" data-module="3" type="button">FX4 TAPE ECHO<br><span>FREEZE OFF</span></button>
+      </div>
+      <div class="quad-stage">
+        <div class="led-matrix" id="led-matrix" role="img" aria-label="8x8 Kaoss LED Matrix"></div>
+        <div class="quad-readouts">
+          <output id="quad-readout-0">FX1 LOOPER // --</output>
+          <output id="quad-readout-1">FX2 VINYL // --</output>
+          <output id="quad-readout-2">FX3 FILTER // --</output>
+          <output id="quad-readout-3">FX4 TAPE ECHO // --</output>
+        </div>
       </div>
       <div class="bank-grid" id="bank-grid"></div>
       <pre class="live-log" id="live-log">BOOT // waiting for one-app logs</pre>

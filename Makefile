@@ -1,7 +1,9 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk test-gradle-wrapper test-native-audio-bridge test-release-guard
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
+
+DSP_CORE_SOURCES = android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/audio_input_engine.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_audio_processor.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp android/app/src/main/cpp/oboe_exclusive_stream.cpp
 
 build:
 	@if command -v cmake >/dev/null 2>&1; then \
@@ -9,17 +11,28 @@ build:
 		cmake --build build --config Release; \
 	else \
 		mkdir -p build && \
-		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/audio_latency_e2e_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp android/app/src/main/cpp/oboe_exclusive_stream.cpp -o build/audio_latency_e2e_test && \
-		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/brickwall_limiter_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp android/app/src/main/cpp/oboe_exclusive_stream.cpp -o build/brickwall_limiter_test && \
-		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp tests/transient_splitter_test.cpp android/app/src/main/cpp/audio_flinger_hook.cpp android/app/src/main/cpp/dsp_transient_splitter.cpp android/app/src/main/cpp/kaoss_quad_engine.cpp android/app/src/main/cpp/oboe_exclusive_stream.cpp -o build/transient_splitter_test; \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -pthread -Iandroid/app/src/main/cpp tests/audio_latency_e2e_test.cpp $(DSP_CORE_SOURCES) -o build/audio_latency_e2e_test && \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -pthread -Iandroid/app/src/main/cpp tests/brickwall_limiter_test.cpp $(DSP_CORE_SOURCES) -o build/brickwall_limiter_test && \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -pthread -Iandroid/app/src/main/cpp tests/transient_splitter_test.cpp $(DSP_CORE_SOURCES) -o build/transient_splitter_test && \
+		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -pthread -Iandroid/app/src/main/cpp tests/audio_input_processor_test.cpp $(DSP_CORE_SOURCES) -o build/audio_input_processor_test; \
 	fi
 
-test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-signed-apk
+test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
 	./build/brickwall_limiter_test --threshold=-3.2dBFS
 	./build/transient_splitter_test
+	./build/audio_input_processor_test
+
+test-native-audio-bridge:
+	python3 tests/native_audio_bridge_test.py
+
+test-release-guard:
+	python3 tests/release_artifact_guard_test.py
+
+test-gradle-wrapper:
+	python3 scripts/verify_gradle_wrapper.py
 
 test-offline-daemons:
 	python3 tests/offline_ipc_socket_test.py
