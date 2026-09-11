@@ -95,6 +95,48 @@ ENDPOINT_LIST = [
 ]
 
 ENGINE = build_engine(DB_PATH)
+# Phase 3/5: IPC binding with retry/circuit-breaker + watchdog (graceful fallback if not installed)
+try:
+    from ipc_binding import call_with_retry, serialize, deserialize  # type: ignore
+    HAS_IPC_BINDING = True
+except ImportError:
+    HAS_IPC_BINDING = False
+    def call_with_retry(key, func, timeout_ms=5000, attempts=3, base_delay_ms=20):
+        try:
+            return func()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300], "attempt": attempts, "degraded": True}
+    def serialize(payload):  # type: ignore
+        import json as _json
+        return _json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    def deserialize(blob):  # type: ignore
+        import json as _json
+        try:
+            return _json.loads(blob.decode("utf-8"))
+        except Exception:
+            return {"raw": blob.hex()[:80]}
+
+def _dispatch_with_binding(action: str, params: dict, strict: bool = True, timeout_ms: int = 5000):
+    """Phase 3: 5s timeout, 3 attempts, user-friendly error + bug file."""
+    def _call():
+        return ENGINE.dispatch(action, params, strict=strict)
+    if HAS_IPC_BINDING:
+        return call_with_retry(f"app:{action}", _call, timeout_ms=timeout_ms, attempts=3)
+    # fallback direct
+    try:
+        return _call()
+    except Exception as exc:
+        # Graceful Degradation + Bug-Report-File (Phase 5)
+        try:
+            import hashlib as _h, time as _t, json as _j
+            from pathlib import Path as _P
+            bid = _h.sha256(f"{action}:{_t.time()}:{exc}".encode()).hexdigest()[:12]
+            (_P("dist/bug_reports") / f"{bid}.json").parent.mkdir(parents=True, exist_ok=True)
+            (_P("dist/bug_reports") / f"{bid}.json").write_text(_j.dumps({"action": action, "error": str(exc)[:300], "type": type(exc).__name__, "at": _t.time()}, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+        return {"ok": False, "action": action, "status": "ERROR", "detail": {"error": f"User-friendly: {exc}.".strip()[:300], "hint": "Siehe dist/bug_reports/*.json"}, "seq": 0, "latency_ms": 0}
+
 # Native-Bridge: welcher Engine-Port zuletzt zur Aktion geladen wurde.
 BRIDGE_LOADED: dict[int, dict[str, object]] = {}
 BRIDGE_ACTIVE_PORT: int | None = None
@@ -604,7 +646,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             if action not in ACTION_BY_NAME:
                 self.send_json({"ok": False, "error": f"unknown action: {action}", "known": sorted(ACTION_BY_NAME)}, code=400)
                 return
-            result = ENGINE.dispatch(action, params, strict=strict)
+            result = _dispatch_with_binding(action, params, strict=strict)
             load_native_port_for_action(action)
             self.send_json(self.action_response(result))
             return
@@ -659,7 +701,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": f"no POST action for {path}", "routes": sorted(POST_ROUTES)}, code=404)
             return
         strict = bool(params.pop("strict", True))
-        result = ENGINE.dispatch(action, params, strict=strict)
+        result = _dispatch_with_binding(action, params, strict=strict)
         load_native_port_for_action(action)
         self.send_json(self.action_response(result))
 

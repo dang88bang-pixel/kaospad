@@ -589,7 +589,7 @@ check('transcribe blocked before mic', el('transcribe-output').value.includes('B
 el('chain-reset').click();
 await settle(200);
 el('run-full-chain').click();
-await sleep(900);
+await waitFor('full chain 23 steps', () => chain.summary().length === 23 ? true : `length=${chain.summary().length}`, 6000);
 
 const summary = chain.summary();
 check('full chain executed', summary.length === 23, summary);

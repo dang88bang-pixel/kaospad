@@ -55,6 +55,25 @@ ROLE_ACTIONS = {
 }
 
 ENGINE = build_engine(DB_PATH)
+# Phase 3/5: IPC binding
+try:
+    from ipc_binding import call_with_retry  # type: ignore
+    HAS_BINDING = True
+except ImportError:
+    HAS_BINDING = False
+    def call_with_retry(key, func, timeout_ms=5000, attempts=3, base_delay_ms=20):
+        try:
+            return func()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)[:300]}
+
+def _dispatch_bound(action, params, strict=True):
+    def _call():
+        return ENGINE.dispatch(action, params, strict=strict)
+    if HAS_BINDING:
+        return call_with_retry(f"ipc:{action}", _call, timeout_ms=5000, attempts=3)
+    return _call()
+
 
 
 def json_bytes(payload: object) -> bytes:
@@ -230,7 +249,7 @@ class JsonHandler(SimpleHTTPRequestHandler):
             }, code=403)
             return
         strict = bool(params.pop("strict", True))
-        self.send_json(action_response(ENGINE.dispatch(action, params, strict=strict)))
+        self.send_json(action_response(_dispatch_bound(action, params, strict=strict)))
 
 
 ACTION_BY_PATH = {path: action for path, action in {
@@ -294,7 +313,7 @@ class UDPHandler(socketserver.BaseRequestHandler):
             signal = "mouth_bass"
         if signal == "transient":
             signal = "mouth_bass"
-        result = ENGINE.dispatch("dsp.process", {"signal": signal, "frames": 128}, strict=False)
+        result = _dispatch_bound("dsp.process", {"signal": signal, "frames": 128}, strict=False) if HAS_BINDING else ENGINE.dispatch("dsp.process", {"signal": signal, "frames": 128}, strict=False)
         report = (result.get("detail") or {}).get("report") or {}
         payload = {
             "bpm": ENGINE.chain.bpm,
