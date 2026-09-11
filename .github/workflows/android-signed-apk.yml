@@ -1,25 +1,78 @@
-name: Android signed APK (cloud SDK)
+name: Android signed APK (CI/CD + GitHub Release)
+
+# CD-Kette: Gradle assembleRelease (echter ART/Native-Build) -> apksigner v1+v2+v3
+# -> Guard gegen Platzhalter -> GitHub Release (gh CLI) -> APK ins Repo (releases/android/).
+# Signatur-Identitaet, Prioritaet: Repo-Secret > Actions-Cache > ephemeraerer CI-Key.
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "GitHub Release mit der signierten APK erstellen/aktualisieren"
+        type: boolean
+        default: true
+      commit_to_repo:
+        description: "Signierte APK nach releases/android/ committen"
+        type: boolean
+        default: true
+      build_aab:
+        description: "Zusaetzlich signiertes Android App Bundle (Play) bauen"
+        type: boolean
+        default: true
   push:
     branches:
-      - arena/01a085c8-kaospad
+      - main
+      - arena/01a092bc-kaospad
+    tags:
+      - "v*.*.*"
     paths:
       - "android/**"
       - "web/**"
+      - "scripts/**"
+      - "tests/**"
+      - "Makefile"
+      - ".github/workflows/android-signed-apk.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "web/**"
+      - "scripts/verify_signed_apk.py"
       - ".github/workflows/android-signed-apk.yml"
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: signed-apk-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  COMPILE_SDK: "35"
+  BUILD_TOOLS: "35.0.0"
+  NDK_VERSION: "26.1.10909125"
+  CMAKE_VERSION: "3.22.1"
+  GRADLE_VERSION: "8.7"
+  KEYSTORE_CACHE_KEY: kaoss-signing-keystore-v1
 
 jobs:
-  assemble-release:
-    name: assembleRelease on ubuntu-latest
+  build-sign-publish:
+    name: assembleRelease, signieren, verifizieren, publizieren
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
+    outputs:
+      apk_name: ${{ steps.stage.outputs.apk_name }}
+      apk_sha256: ${{ steps.stage.outputs.apk_sha256 }}
+      signing_identity: ${{ steps.keystore.outputs.identity }}
+      release_tag: ${{ steps.publish.outputs.release_tag }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -30,66 +83,401 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install platform, NDK, CMake
-        run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager \
-            "platforms;android-35" \
-            "build-tools;35.0.0" \
-            "ndk;26.1.10909125" \
-            "cmake;3.22.1"
-
-      - name: Set up Gradle 8.7 (no local wrapper JAR)
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.7"
-
-      - name: Sync PWA into Android assets
-        run: |
-          mkdir -p android/app/src/main/assets/www
-          cp -a web/. android/app/src/main/assets/www/
-
-      - name: Write local.properties
-        run: |
-          {
-            echo "sdk.dir=${ANDROID_HOME}"
-            echo "ndk.dir=${ANDROID_HOME}/ndk/26.1.10909125"
-          } > android/local.properties
-
-      - name: Prepare signing keystore
-        env:
-          KAOSS_KEYSTORE_BASE64: ${{ secrets.KAOSS_KEYSTORE_BASE64 }}
+      - name: Install platform, build-tools, NDK, CMake
         run: |
           set -euo pipefail
-          KS="${RUNNER_TEMP}/kaoss-release.jks"
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-${COMPILE_SDK}" \
+            "build-tools;${BUILD_TOOLS}" \
+            "ndk;${NDK_VERSION}" \
+            "cmake;${CMAKE_VERSION}"
+          BT="${ANDROID_HOME}/build-tools/${BUILD_TOOLS}"
+          echo "APKSIGNER=${BT}/apksigner" >> "${GITHUB_ENV}"
+          echo "ZIPALIGN=${BT}/zipalign" >> "${GITHUB_ENV}"
+          test -x "${BT}/apksigner"
+
+      - name: Set up Gradle (kein Wrapper-Jar im Repo)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "${{ env.GRADLE_VERSION }}"
+
+      - name: PWA in die Android-Assets synchronisieren
+        run: |
+          set -euo pipefail
+          # Additiv mergen: web/ ist die Quelle, assets/www/README.txt bleibt erhalten.
+          mkdir -p android/app/src/main/assets/www
+          cp -a web/. android/app/src/main/assets/www/
+          find android/app/src/main/assets/www -type d -name node_modules -prune -exec rm -rf {} + || true
+          test -f android/app/src/main/assets/www/index.html
+          test -f android/app/src/main/assets/www/src/dsp-core.js
+
+      - name: local.properties schreiben
+        run: |
+          set -euo pipefail
+          {
+            echo "sdk.dir=${ANDROID_HOME}"
+            echo "ndk.dir=${ANDROID_HOME}/ndk/${NDK_VERSION}"
+          } > android/local.properties
+
+      - name: Persistenten Signier-Keystore aus dem Actions-Cache laden
+        if: github.event_name != 'pull_request'
+        uses: actions/cache/restore@v4
+        with:
+          path: signing-cache
+          key: ${{ env.KEYSTORE_CACHE_KEY }}
+          fail-on-cache-miss: false
+
+      - name: Signier-Keystore bereitstellen
+        id: keystore
+        env:
+          KAOSS_KEYSTORE_BASE64: ${{ secrets.KAOSS_KEYSTORE_BASE64 }}
+          KAOSS_SECRET_STORE_PASSWORD: ${{ secrets.KAOSS_KEYSTORE_PASSWORD }}
+          KAOSS_SECRET_KEY_ALIAS: ${{ secrets.KAOSS_KEY_ALIAS }}
+          KAOSS_SECRET_KEY_PASSWORD: ${{ secrets.KAOSS_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mkdir -p signing-cache
+          KS="${GITHUB_WORKSPACE}/signing-cache/kaoss-release.p12"
+          ENVF="${KS}.env"
+          ALIAS="${KAOSS_SECRET_KEY_ALIAS:-kaoss}"
+          IDENTITY=""
+          GENERATED="false"
+
           if [ -n "${KAOSS_KEYSTORE_BASE64:-}" ]; then
-            echo "${KAOSS_KEYSTORE_BASE64}" | base64 -d > "${KS}"
+            printf '%s' "${KAOSS_KEYSTORE_BASE64}" | tr -d '\n\r\t ' | base64 -d > "${KS}"
+            IDENTITY="repo-secret"
+            STORE_PASS="${KAOSS_SECRET_STORE_PASSWORD:-android}"
+            KEY_PASS="${KAOSS_SECRET_KEY_PASSWORD:-${STORE_PASS}}"
+          elif [ -s "${KS}" ] && [ -s "${ENVF}" ]; then
+            IDENTITY="actions-cache"
+            # shellcheck disable=SC1090
+            . "${ENVF}"
           else
-            keytool -genkeypair -keystore "${KS}" -alias kaoss \
+            IDENTITY="ephemeral-ci"
+            GENERATED="true"
+            STORE_PASS="$(openssl rand -hex 24)"
+            KEY_PASS="${STORE_PASS}"
+            keytool -genkeypair -keystore "${KS}" -storetype PKCS12 -alias "${ALIAS}" \
               -keyalg RSA -keysize 2048 -validity 3650 \
-              -storepass android -keypass android \
-              -dname "CN=Kaoss Beatbox Studio, OU=Offline, O=Kaoss, L=Berlin, C=DE"
+              -storepass "${STORE_PASS}" -keypass "${KEY_PASS}" \
+              -dname "CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE"
+            umask 077
+            printf 'STORE_PASS=%s\nKEY_PASS=%s\nALIAS=%s\n' "${STORE_PASS}" "${KEY_PASS}" "${ALIAS}" > "${ENVF}"
           fi
+
+          test -s "${KS}" || { echo "::error::Keystore ist leer oder fehlt"; exit 1; }
+
+          # Vorflug: Keystore muss mit JDK 17 lesbar sein, sonst scheitert Gradle undeutlich.
+          keytool -list -v -keystore "${KS}" -storepass "${STORE_PASS}" > signing-cache/keytool-list.txt
+          grep -E "Alias name|SHA256:" signing-cache/keytool-list.txt | head -4
+
+          # Gradle liest die Credentials aus android/keystore.properties (gitignored, 0600).
+          umask 077
+          {
+            echo "storeFile=${KS}"
+            echo "storePassword=${STORE_PASS}"
+            echo "keyAlias=${ALIAS}"
+            echo "keyPassword=${KEY_PASS}"
+          } > android/keystore.properties
           echo "KAOSS_KEYSTORE_FILE=${KS}" >> "${GITHUB_ENV}"
-          echo "KAOSS_KEYSTORE_PASSWORD=${KAOSS_KEYSTORE_PASSWORD:-android}" >> "${GITHUB_ENV}"
-          echo "KAOSS_KEY_ALIAS=${KAOSS_KEY_ALIAS:-kaoss}" >> "${GITHUB_ENV}"
-          echo "KAOSS_KEY_PASSWORD=${KAOSS_KEY_PASSWORD:-android}" >> "${GITHUB_ENV}"
+          echo "SIGNING_IDENTITY=${IDENTITY}" >> "${GITHUB_ENV}"
+          echo "identity=${IDENTITY}" >> "${GITHUB_OUTPUT}"
+          echo "generated=${GENERATED}" >> "${GITHUB_OUTPUT}"
+          echo "Signier-Identitaet: ${IDENTITY}"
 
       - name: Gradle assembleRelease
         working-directory: android
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/26.1.10909125
-        run: gradle :app:assembleRelease --no-daemon --stacktrace
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+        run: gradle :app:assembleRelease --no-daemon --stacktrace --warning-mode=summary
 
-      - name: Hash and list APK
+      - name: Explizit mit apksigner signieren (v1 + v2 + v3)
         run: |
-          find android/app/build/outputs/apk -name '*.apk' -print -exec sha256sum {} \;
-          unzip -l android/app/build/outputs/apk/release/*.apk | head -60
+          set -euo pipefail
+          APK="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          test -n "${APK}"
+          KS="$(sed -n 's/^storeFile=//p' android/keystore.properties)"
+          ALIAS="$(sed -n 's/^keyAlias=//p' android/keystore.properties)"
+          KAOSS_STORE_PASS="$(sed -n 's/^storePassword=//p' android/keystore.properties)"
+          KAOSS_KEY_PASS="$(sed -n 's/^keyPassword=//p' android/keystore.properties)"
+          export KAOSS_STORE_PASS KAOSS_KEY_PASS
+          "${APKSIGNER}" sign \
+            --ks "${KS}" \
+            --ks-key-alias "${ALIAS}" \
+            --ks-pass env:KAOSS_STORE_PASS \
+            --key-pass env:KAOSS_KEY_PASS \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            "${APK}"
+          echo "apksigner sign ok: ${APK}"
 
-      - name: Upload signed APK
+      - name: Release-Assets staging (Name, SHA-256)
+        id: stage
+        run: |
+          set -euo pipefail
+          mkdir -p dist-release
+          RAW="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          VERSION_NAME="$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' android/app/build.gradle.kts | head -1)"
+          VERSION_CODE="$(sed -n 's/.*versionCode *= *\([0-9]\{1,\}\).*/\1/p' android/app/build.gradle.kts | head -1)"
+          test -n "${VERSION_NAME}" && test -n "${VERSION_CODE}"
+          APK_NAME="KaossBeatboxStudio-v${VERSION_NAME}-${VERSION_CODE}-universal-signed.apk"
+          cp -f "${RAW}" "dist-release/${APK_NAME}"
+          APK_SHA256="$(sha256sum "dist-release/${APK_NAME}" | cut -d' ' -f1)"
+          (cd dist-release && printf '%s  %s\n' "${APK_SHA256}" "${APK_NAME}" > SHA256SUMS.txt)
+          {
+            echo "APK_NAME=${APK_NAME}"
+            echo "APK_SHA256=${APK_SHA256}"
+            echo "VERSION_NAME=${VERSION_NAME}"
+            echo "VERSION_CODE=${VERSION_CODE}"
+          } >> "${GITHUB_ENV}"
+          # Release-Tag frueh bestimmen, damit Notes/Summary denselben Tag nutzen.
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            RELEASE_TAG="apk-latest"
+          fi
+          echo "RELEASE_TAG=${RELEASE_TAG}" >> "${GITHUB_ENV}"
+          echo "apk_name=${APK_NAME}" >> "${GITHUB_OUTPUT}"
+          echo "apk_sha256=${APK_SHA256}" >> "${GITHUB_OUTPUT}"
+          echo "${APK_NAME} sha256=${APK_SHA256} size=$(stat -c%s "dist-release/${APK_NAME}") bytes release=${RELEASE_TAG}"
+
+      - name: Signatur verifizieren und Platzhalter ablehnen
+        run: |
+          set -euo pipefail
+          APK="dist-release/${APK_NAME}"
+          "${ZIPALIGN}" -c -v 4 "${APK}" > dist-release/zipalign-4.log
+          echo "zipalign (4 Bytes): ok"
+          "${ZIPALIGN}" -c -P 16 -v 4 "${APK}" > dist-release/zipalign-16k.log 2>&1 \
+            && echo "zipalign (16 KB .so): ok" \
+            || echo "::warning::16-KB-Page-Alignment der .so nicht erfuellt (informationell fuer Android 15+)"
+          "${APKSIGNER}" verify --verbose --print-certs "${APK}" > dist-release/apksigner-report.txt
+          cat dist-release/apksigner-report.txt
+          "${APKSIGNER}" verify --print-certs-pem "${APK}" > dist-release/kaoss-ci-cert.pem
+          grep -q "BEGIN CERTIFICATE" dist-release/kaoss-ci-cert.pem
+          python3 scripts/verify_signed_apk.py "${APK}" \
+            --abis armeabi-v7a,arm64-v8a,x86_64 \
+            --min-size 500000 \
+            --require-v1 \
+            --apksigner-report dist-release/apksigner-report.txt \
+            --json dist-release/apk-verification.json
+          python3 scripts/verify_signed_apk.py --selftest
+
+      - name: Zusaetzlich signiertes AAB bauen (Play, optional)
+        if: github.event_name != 'workflow_dispatch' || inputs.build_aab
+        id: bundle
+        continue-on-error: true
+        working-directory: android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+        run: gradle :app:bundleRelease --no-daemon --stacktrace --warning-mode=summary
+
+      - name: AAB pruefen und staging
+        if: steps.bundle.outcome == 'success'
+        run: |
+          set -euo pipefail
+          AAB_RAW="$(ls android/app/build/outputs/bundle/release/*.aab 2>/dev/null | head -1 || true)"
+          if [ -z "${AAB_RAW}" ]; then echo "kein AAB erzeugt"; exit 0; fi
+          AAB_NAME="KaossBeatboxStudio-v${VERSION_NAME}-${VERSION_CODE}-universal.aab"
+          cp -f "${AAB_RAW}" "dist-release/${AAB_NAME}"
+          jarsigner -verify -verbose:summary -certs "dist-release/${AAB_NAME}" > dist-release/aab-jarsigner.txt 2>&1 || true
+          if grep -qi "jar verified" dist-release/aab-jarsigner.txt; then
+            echo "AAB signiert: ${AAB_NAME}"
+            echo "aab_name=${AAB_NAME}" >> "${GITHUB_OUTPUT}"
+            (cd dist-release && sha256sum "${AAB_NAME}" >> SHA256SUMS.txt)
+          else
+            echo "::warning::AAB-Signatur nicht bestaetigt - AAB wird nicht publiziert"
+            rm -f "dist-release/${AAB_NAME}"
+          fi
+
+      - name: SIGNING.txt und Release-Notes erzeugen
+        run: |
+          set -euo pipefail
+          APK_SIZE="$(stat -c%s "dist-release/${APK_NAME}")"
+          CERT_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' dist-release/apksigner-report.txt | head -1)"
+          CERT_DN="$(sed -n 's/^Signer #1 certificate DN: //p' dist-release/apksigner-report.txt | head -1)"
+          V1="$(sed -n 's/^Verified using v1 scheme (JAR signing): //p' dist-release/apksigner-report.txt)"
+          V2="$(sed -n 's/^Verified using v2 scheme (APK Signature Scheme v2): //p' dist-release/apksigner-report.txt)"
+          V3="$(sed -n 's/^Verified using v3 scheme (APK Signature Scheme v3): //p' dist-release/apksigner-report.txt)"
+          {
+            echo "Kaoss Beatbox Studio - Signatur-Nachweis"
+            echo "========================================"
+            echo "APK:                 ${APK_NAME}"
+            echo "Groesse:             ${APK_SIZE} bytes"
+            echo "SHA-256 (APK):       ${APK_SHA256}"
+            echo "versionName:         ${VERSION_NAME}"
+            echo "versionCode:         ${VERSION_CODE}"
+            echo "applicationId:       com.kaoss.studio"
+            echo "minSdk / targetSdk:  26 / 35"
+            echo "ABIs:                armeabi-v7a, arm64-v8a, x86_64"
+            echo "Signatur-Schemata:   v1(JAR)=${V1} v2=${V2} v3=${V3}"
+            echo "Zertifikat-DN:       ${CERT_DN}"
+            echo "Zertifikat-SHA-256:  ${CERT_SHA256}"
+            echo "Signing-Identitaet:  ${SIGNING_IDENTITY}"
+            echo "  repo-secret   = Keystore aus Secret KAOSS_KEYSTORE_BASE64 (persistent, empfohlen)"
+            echo "  actions-cache = persistenter Keystore aus dem Actions-Cache (${KEYSTORE_CACHE_KEY})"
+            echo "  ephemeral-ci  = pro Lauf erzeugter Self-Signed-Key (Signatur wechselt, kein Update ueber Alt-Installation)"
+            echo "Commit:              ${GITHUB_SHA}"
+            echo "Ref:                 ${GITHUB_REF}"
+            echo "Run:                 ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo ""
+            echo "--- apksigner verify --verbose --print-certs ---"
+            cat dist-release/apksigner-report.txt
+          } > dist-release/SIGNING.txt
+          cat dist-release/SIGNING.txt
+
+          {
+            echo "## Signierte Android-APK (CI/CD-Build)"
+            echo ""
+            echo "| Feld | Wert |"
+            echo "| --- | --- |"
+            echo "| Version | v${VERSION_NAME} (versionCode ${VERSION_CODE}) |"
+            echo "| APK | \`${APK_NAME}\` |"
+            echo "| Groesse | ${APK_SIZE} bytes |"
+            echo "| SHA-256 | \`${APK_SHA256}\` |"
+            echo "| Signatur | v1=${V1}, v2=${V2}, v3=${V3} (apksigner) |"
+            echo "| Zertifikat | \`${CERT_DN}\` |"
+            echo "| Zertifikat-SHA-256 | \`${CERT_SHA256}\` |"
+            echo "| Signing-Identitaet | \`${SIGNING_IDENTITY}\` |"
+            echo "| Commit | \`${GITHUB_SHA}\` (\`${GITHUB_REF_NAME}\`) |"
+            echo "| Build | [Run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) |"
+            echo ""
+            echo "### Download (gh CLI)"
+            echo ""
+            echo '```bash'
+            echo "gh release download ${RELEASE_TAG:-apk-latest} --repo ${GITHUB_REPOSITORY} --pattern '*.apk' --clobber"
+            echo '```'
+            echo ""
+            echo "### Installation"
+            echo ""
+            echo '```bash'
+            echo "adb install -r ${APK_NAME}"
+            echo '```'
+            echo ""
+            echo "Sideload: APK aufs Geraet kopieren und oeffnen (Quelle unbekannt erlauben)."
+            echo "Die App ist offline-first; Mikrofon-Berechtigung wird zur Laufzeit erteilt."
+            echo ""
+            echo "### Pruefen"
+            echo ""
+            echo '```bash'
+            echo "sha256sum -c SHA256SUMS.txt"
+            echo "apksigner verify --verbose --print-certs ${APK_NAME}"
+            echo '```'
+          } > dist-release/RELEASE-NOTES.md
+
+      - name: Keystore in den Actions-Cache sichern (nur wenn neu erzeugt)
+        if: github.event_name != 'pull_request' && steps.keystore.outputs.generated == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: signing-cache
+          key: ${{ env.KEYSTORE_CACHE_KEY }}
+
+      - name: Workflow-Artefakt hochladen
         uses: actions/upload-artifact@v4
         with:
-          name: KaossBeatboxStudio-v5.0.0-cloud-signed
-          path: android/app/build/outputs/apk/release/*.apk
+          name: signed-android-release
+          path: |
+            dist-release/*.apk
+            dist-release/*.aab
+            dist-release/SHA256SUMS.txt
+            dist-release/SIGNING.txt
+            dist-release/kaoss-ci-cert.pem
+            dist-release/apksigner-report.txt
+            dist-release/apk-verification.json
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: GitHub Release publizieren (gh CLI)
+        id: publish
+        if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish_release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${RELEASE_TAG}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TITLE="Kaoss Beatbox Studio ${TAG} - signierte APK"
+          else
+            TITLE="Signierte APK - letzter CI-Build (${GITHUB_REF_NAME})"
+          fi
+          ASSETS=(
+            "dist-release/${APK_NAME}"
+            "dist-release/SHA256SUMS.txt"
+            "dist-release/SIGNING.txt"
+            "dist-release/kaoss-ci-cert.pem"
+            "dist-release/apksigner-report.txt"
+            "dist-release/apk-verification.json"
+          )
+          for extra in dist-release/*.aab; do
+            [ -e "${extra}" ] && ASSETS+=("${extra}")
+          done
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
+            gh release upload "${TAG}" --repo "${GITHUB_REPOSITORY}" --clobber "${ASSETS[@]}"
+            gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --title "${TITLE}" \
+              --notes-file dist-release/RELEASE-NOTES.md
+            echo "Release ${TAG} aktualisiert"
+          else
+            gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+              --title "${TITLE}" --notes-file dist-release/RELEASE-NOTES.md \
+              --target "${GITHUB_SHA}" "${ASSETS[@]}"
+            echo "Release ${TAG} erstellt"
+          fi
+          echo "release_tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --json tagName,name,url,assets --jq '{tag:.tagName,name:.name,url:.url,assets:[.assets[]|{name,size}]}'
+
+      - name: Signierte APK ins Repo committen (releases/android/)
+        if: >-
+          github.event_name != 'pull_request'
+          && !startsWith(github.ref, 'refs/tags/')
+          && (github.event_name != 'workflow_dispatch' || inputs.commit_to_repo)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p releases/android
+          # Genau eine APK im Tree halten (ältere Builds entfernen).
+          find releases/android -maxdepth 1 -name '*.apk' ! -name "${APK_NAME}" -delete
+          cp -f "dist-release/${APK_NAME}" releases/android/
+          cp -f dist-release/SHA256SUMS.txt dist-release/SIGNING.txt \
+                dist-release/kaoss-ci-cert.pem dist-release/apksigner-report.txt \
+                dist-release/apk-verification.json releases/android/
+          git add releases/android
+          if git diff --cached --quiet; then
+            echo "releases/android/ unveraendert - kein Commit noetig"
+            exit 0
+          fi
+          BODY="$(printf 'Gradle assembleRelease + apksigner (v1+v2+v3), Guard: scripts/verify_signed_apk.py\nSHA-256: %s\nRun: %s/%s/actions/runs/%s' \
+            "${APK_SHA256}" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")"
+          git commit -m "ci(android): signierte APK ${APK_NAME} [${SIGNING_IDENTITY}]" -m "${BODY}"
+          BRANCH="${GITHUB_REF_NAME}"
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${BRANCH}"; then
+              echo "APK-Commit nach ${BRANCH} gepusht"
+              exit 0
+            fi
+            echo "::warning::Push-Versuch ${attempt} fehlgeschlagen, rebase auf origin/${BRANCH}"
+            git pull --rebase -X theirs origin "${BRANCH}" || { git rebase --abort || true; }
+          done
+          echo "::error::APK-Commit konnte nicht nach ${BRANCH} gepusht werden"
+          exit 1
+
+      - name: Job-Zusammenfassung
+        if: always()
+        run: |
+          {
+            echo "### Signierte APK"
+            echo ""
+            echo "- Datei: \`${APK_NAME:-unbekannt}\`"
+            echo "- SHA-256: \`${APK_SHA256:-unbekannt}\`"
+            echo "- Signing-Identitaet: \`${SIGNING_IDENTITY:-unbekannt}\`"
+            echo "- Release: \`${{ steps.publish.outputs.release_tag || 'nicht publiziert' }}\`"
+            echo ""
+            echo '```bash'
+            echo "gh release download ${RELEASE_TAG:-apk-latest} --repo ${GITHUB_REPOSITORY} --pattern '*.apk' --clobber"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"

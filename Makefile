@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk test-gradle-wrapper test-native-audio-bridge test-release-guard
+.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk test-gradle-wrapper test-native-audio-bridge test-release-guard test-ci-signed-apk verify-signed-apk signing-secrets
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -17,7 +17,7 @@ build:
 		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -pthread -Iandroid/app/src/main/cpp tests/audio_input_processor_test.cpp $(DSP_CORE_SOURCES) -o build/audio_input_processor_test; \
 	fi
 
-test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
+test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper test-ci-signed-apk
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
@@ -78,6 +78,19 @@ signed-apk:
 
 test-signed-apk: signed-apk
 	python3 tests/signed_apk_test.py
+
+# CI/CD-Vertrag der signierten APK (Workflows, Signing, Guard) - ohne Android SDK lauffaehig.
+test-ci-signed-apk:
+	python3 tests/ci_signed_apk_workflow_test.py
+
+# Verifiziert die von CI committete APK in releases/android/ (Struktur + apksigner-Report).
+verify-signed-apk:
+	@ls releases/android/*.apk >/dev/null 2>&1 || { echo 'noch keine CI-APK in releases/android/ - Workflow android-signed-apk.yml muss einmal laufen'; exit 1; }
+	python3 scripts/verify_signed_apk.py releases/android/*.apk --require-v1 --apksigner-report releases/android/apksigner-report.txt
+
+# Persistente Signier-Identitaet als GitHub-Secrets registrieren (braucht gh mit admin:repo).
+signing-secrets:
+	./scripts/setup_signing_secrets.sh
 
 demo-chain:
 	python3 engines/session_engine.py

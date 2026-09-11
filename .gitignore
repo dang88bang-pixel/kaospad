@@ -12,3 +12,14 @@ node_modules/
 
 __pycache__/
 *.py[cod]
+
+# Signier-Material: Private Keys / Keystores gehoeren niemals ins Repository.
+android/keystore.properties
+android/signing/*.p12
+android/signing/*.pfx
+android/signing/*.jks
+android/signing/*.keystore
+signing-cache/
+
+# CI-Staging fuer Release-Assets (die APK landet versioniert in releases/android/)
+dist-release/

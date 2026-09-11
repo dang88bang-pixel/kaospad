@@ -234,6 +234,40 @@ all ports visible in the view while preserving the localhost-only rule.
 
 Tag pushes matching `v*.*.*` run `.github/workflows/multiplatform-ci-cd.yml`, collect Android/Linux/macOS/Windows artifacts and publish them with `GITHUB_TOKEN`.
 
+### Signierte APK via CI/CD (gh CLI)
+
+`.github/workflows/android-signed-apk.yml` baut bei jedem Push auf `main`/`arena/*`,
+bei Tags `v*.*.*` und manuell per `workflow_dispatch` eine **echte** Release-APK
+(Gradle 8.7 + AGP + NDK/CMake in der Cloud), signiert sie explizit mit
+`apksigner` (**v1 + v2 + v3**), verifiziert sie (`scripts/verify_signed_apk.py`,
+`zipalign`, `apksigner verify --print-certs`) und stellt sie dreifach bereit:
+
+| Ort | Was |
+| --- | --- |
+| GitHub Release `apk-latest` (bzw. Tag `v*.*.*`) | APK, `SHA256SUMS.txt`, `SIGNING.txt`, `kaoss-ci-cert.pem`, `apksigner-report.txt`, optional AAB |
+| Repo-Tree `releases/android/` | dieselben Dateien, von CI committet (genau eine APK) |
+| Workflow-Artefakt `signed-android-release` | 30 Tage Aufbewahrung |
+
+```bash
+gh workflow run "Android signed APK (CI/CD + GitHub Release)" --ref main
+gh run watch "$(gh run list --workflow android-signed-apk.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+gh release download apk-latest --pattern '*.apk' --clobber
+adb install -r KaossBeatboxStudio-v5.0.0-50000-universal-signed.apk
+make test-ci-signed-apk   # CI/CD-Vertrag lokal pruefen (ohne Android SDK)
+```
+
+Signatur-Identität (Priorität): `secrets.KAOSS_KEYSTORE_BASE64` → Actions-Cache
+`kaoss-signing-keystore-v1` → pro Lauf erzeugter Self-Signed-Key. Persistent
+machen mit `./scripts/setup_signing_secrets.sh` (braucht `gh` mit `admin:repo`,
+der Sandbox-Bot darf keine Secrets schreiben). Private Keys bleiben aus Git raus.
+
+Achtung Verwechslungsgefahr: `releases/KaossBeatboxStudio-v5.0.0-Universal-Signed.apk`
+ist der **offline handgebaute Stub** ohne `lib/<abi>/libkaoss_native.so` und dient
+als Negativ-Fixture für `tests/release_artifact_guard_test.py`. Die echte,
+installierbare APK liegt in [`releases/android/`](releases/android/README.md).
+
+Details, Troubleshooting und Grenzen: [`docs/CI_CD_SIGNED_APK.md`](docs/CI_CD_SIGNED_APK.md).
+
 ## Design system
 
 - Amber glow: `#ff7a00`
