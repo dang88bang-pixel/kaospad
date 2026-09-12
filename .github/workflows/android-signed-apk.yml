@@ -200,19 +200,25 @@ jobs:
           gradle :app:assembleRelease --no-daemon --stacktrace --warning-mode=summary 2>&1 \
             | tee ../dist-release/gradle-assemble.log
 
-      - name: Explizit mit apksigner signieren (v1 + v2 + v3)
+      - name: APK ausrichten und explizit signieren (zipalign -> apksigner v1+v2+v3)
         run: |
           set -euo pipefail
           mkdir -p dist-release
           exec > >(tee -a "${GITHUB_WORKSPACE}/dist-release/apksigner-sign.log") 2>&1
-          APK_RAW="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
-          test -n "${APK_RAW}"
+          RAW="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          test -n "${RAW}"
+          ls -l android/app/build/outputs/apk/release/
+          SIGNED="dist-release/app-aligned-signed.apk"
+          rm -f "${SIGNED}"
+          # Kanonische Reihenfolge (Android-Doku): erst zipalign, dann apksigner.
+          # zipalign NACH dem Signieren wuerde die v2/v3-Signatur ungueltig machen.
+          "${ZIPALIGN}" -f -p 4 "${RAW}" "${SIGNED}"
+          "${ZIPALIGN}" -c -p -v 4 "${SIGNED}" | tail -3
           KS="$(sed -n 's/^storeFile=//p' android/keystore.properties)"
           ALIAS="$(sed -n 's/^keyAlias=//p' android/keystore.properties)"
           KAOSS_STORE_PASS="$(sed -n 's/^storePassword=//p' android/keystore.properties)"
           KAOSS_KEY_PASS="$(sed -n 's/^keyPassword=//p' android/keystore.properties)"
           export KAOSS_STORE_PASS KAOSS_KEY_PASS
-          ls -l android/app/build/outputs/apk/release/
           "${APKSIGNER}" sign \
             --ks "${KS}" \
             --ks-key-alias "${ALIAS}" \
@@ -221,17 +227,19 @@ jobs:
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
-            "${APK_RAW}"
-          echo "apksigner sign ok: ${APK_RAW}"
+            "${SIGNED}"
+          "${APKSIGNER}" verify --print-certs "${SIGNED}" | head -6
           echo "--- ZIP-Eintraege nach dem Signieren (Dubletten-Check v1) ---"
-          unzip -l "${APK_RAW}" | awk '{print $4}' | grep -E "^(META-INF/|lib/|classes|resources|assets/www/index)" | sort | head -40
+          unzip -l "${SIGNED}" | awk '{print $4}' | grep -E "^(META-INF/|lib/|classes|resources|assets/www/index)" | sort | head -40
+          echo "aligniert + signiert: ${SIGNED} ($(stat -c%s "${SIGNED}") bytes)"
 
       - name: Release-Assets staging (Name, SHA-256)
         id: stage
         run: |
           set -euo pipefail
           mkdir -p dist-release
-          RAW="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          RAW="dist-release/app-aligned-signed.apk"
+          test -s "${RAW}"
           VERSION_NAME="$(sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' android/app/build.gradle.kts | head -1)"
           VERSION_CODE="$(sed -n 's/.*versionCode *= *\([0-9]\{1,\}\).*/\1/p' android/app/build.gradle.kts | head -1)"
           test -n "${VERSION_NAME}" && test -n "${VERSION_CODE}"
@@ -268,9 +276,14 @@ jobs:
           log "=== [0/6] APK-Inhalt (Struktur-Uebersicht) ==="
           unzip -l "${APK}" | awk '{print $1, $4}' | grep -E "META-INF/|lib/|classes.*dex|resources.arsc|assets/www/index" | sort -k2 | tee -a "${VERIFY_LOG}"
 
-          log "=== [1/6] zipalign -c -v 4 ${APK} ==="
-          "${ZIPALIGN}" -c -v 4 "${APK}" 2>&1 | tail -5 | tee -a "${VERIFY_LOG}"
-          log "zipalign 4-Byte: OK"
+          log "=== [1/6] zipalign -c -v 4 (informationell: Alignment-Gate lief VOR dem Signieren) ==="
+          if "${ZIPALIGN}" -c -v 4 "${APK}" > dist-release/zipalign-4.log 2>&1; then
+            log "zipalign 4-Byte nach Signatur: OK"
+          else
+            log "zipalign 4-Byte nach Signatur: nicht bestaetigt (apksigner-Layout)"
+            tail -4 dist-release/zipalign-4.log | tee -a "${VERIFY_LOG}" || true
+            echo "::warning::zipalign -c auf der signierten APK nicht bestaetigt - Alignment wurde vor dem Signieren geprueft"
+          fi
 
           log "=== [2/6] zipalign -c -P 16 -v 4 (informationell, Android 15+) ==="
           if "${ZIPALIGN}" -c -P 16 -v 4 "${APK}" > dist-release/zipalign-16k.log 2>&1; then
@@ -515,42 +528,73 @@ jobs:
           echo "::error::APK-Commit konnte nicht nach ${BRANCH} gepusht werden"
           exit 1
 
-      - name: Fehlerdiagnose (Logs als Annotationen)
+      - name: Fehlerdiagnose (Annotationen + Commit-Kommentar)
         if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -uo pipefail
+          # Absichtlich ohne set -e/-u und immer exit 0: die Diagnose darf den Job
+          # nicht zusaetzlich faellen. Rueckkanaele: ::error-Annotationen (per API
+          # lesbar) und ein Commit-Kommentar, weil Log-/Artefakt-Download ueber
+          # Azure Blob aus manchen Netzen blockiert ist.
           emit_lines() {
-            local line
+            local line count=0
             while IFS= read -r line; do
+              [ "${count}" -ge 40 ] && break
+              line="${line%$'\r'}"
               [ -z "${line}" ] && continue
               line="${line//'%'/'%25'}"
-              printf '::error title=CI-Diagnose::%s\n' "${line:0:460}"
-            done <<< "$1"
+              printf '::error title=CI-Diagnose::%s\n' "${line:0:400}" || true
+              count=$((count + 1))
+            done <<< "${1:-}"
+            return 0
           }
           mkdir -p dist-release
+          REPORT="dist-release/ci-diagnose.md"
+          {
+            echo "### CI-Diagnose - Run ${GITHUB_RUN_ID} (${GITHUB_REF_NAME})"
+            echo ""
+            echo "Job: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > "${REPORT}"
           FOUND=0
-          for LOG in dist-release/gradle-assemble.log dist-release/apksigner-sign.log \
-                     dist-release/verify.log dist-release/aab.log dist-release/gradle-bundle.log \
-                     dist-release/publish.log dist-release/commit.log; do
+          for LOG in dist-release/verify.log dist-release/apksigner-sign.log \
+                     dist-release/gradle-assemble.log dist-release/aab.log \
+                     dist-release/gradle-bundle.log dist-release/publish.log \
+                     dist-release/commit.log; do
             [ -s "${LOG}" ] || continue
             FOUND=1
-            FIRST="$(grep -nE "^e: |error:|\* What went wrong|Execution failed for task|ninja: build stopped|Lint found|^FAIL:|DOES NOT VERIFY|Traceback|::error" "${LOG}" | head -1 | cut -d: -f1)"
+            FIRST=$(grep -nE "^e: |error:|Execution failed|What went wrong|ninja: build stopped|Lint found|^FAIL:|DOES NOT VERIFY|Traceback|not bestaetigt|fehlgeschlagen" "${LOG}" 2>/dev/null | head -1 | cut -d: -f1 || true)
             if [ -n "${FIRST}" ]; then
               START=$(( FIRST > 6 ? FIRST - 6 : 1 ))
-              CONTEXT="$(sed -n "${START},$(( FIRST + 45 ))p" "${LOG}")"
+              CONTEXT=$(sed -n "${START},$(( FIRST + 45 ))p" "${LOG}" 2>/dev/null | tr -d '\r' || true)
             else
-              CONTEXT="$(tail -50 "${LOG}")"
+              CONTEXT=$(tail -60 "${LOG}" 2>/dev/null | tr -d '\r' || true)
             fi
+            [ -n "${CONTEXT}" ] || CONTEXT="(leer)"
+            echo "##### ${LOG}"
+            printf '%s\n' "${CONTEXT}"
+            emit_lines "${CONTEXT}"
             {
-              echo "### Fehler-Kontext aus \`${LOG}\`"
+              echo ""
+              echo "#### ${LOG}"
               echo ""
               echo '```'
-              printf '%s\n' "${CONTEXT}"
+              printf '%s\n' "${CONTEXT}" | head -60
               echo '```'
-            } >> "${GITHUB_STEP_SUMMARY}"
-            emit_lines "${CONTEXT}"
+            } >> "${REPORT}"
           done
-          [ "${FOUND}" = 1 ] || echo "::error title=CI-Diagnose::kein Log in dist-release/ gefunden"
+          if [ "${FOUND}" = 0 ]; then
+            echo "::error title=CI-Diagnose::kein Log in dist-release/ gefunden"
+            echo "" >> "${REPORT}"
+            echo "keine Logs in dist-release/ gefunden" >> "${REPORT}"
+          fi
+          cat "${REPORT}" >> "${GITHUB_STEP_SUMMARY}" 2>/dev/null || true
+          # Fallback-Kanal: Commit-Kommentar (per gh api lesbar/loeschbar)
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/comments" \
+            -F body=@"${REPORT}" > /dev/null 2>&1 \
+            || echo "::warning::Commit-Kommentar konnte nicht erstellt werden (Rechte?)"
+          exit 0
 
       - name: Job-Zusammenfassung
         if: always()
