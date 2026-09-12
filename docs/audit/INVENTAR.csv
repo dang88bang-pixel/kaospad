@@ -1,0 +1,114 @@
+Datei;Kategorie;Zeilen;Status;Marker;MarkerAnzahl;DummyReturns;NotImplemented;Referenzen;TestReferenz;Beleg;Hinweis
+scripts/audit_inventory.py;Build/CI;318;PLACEHOLDER;MOCK:2 PLACEHOLDER:11 STUB:12 MOCK:14 DUMMY:19 STUB:37 SHIM:39 MOCK:46;20;4;0;0;nein;"""""""Audit-Inventar: welche Datei ist REAL, MOCK, STUB, TODO, FIXME, PLACEHOLDER oder DEAD?";vom Tooling referenziert (Gradle/CMake/Actions)
+engines/neurallift_360/scripts/download_weights.py;Build/CI;44;PLACEHOLDER;PLACEHOLDER:12 PLACEHOLDER:13 PLACEHOLDER:14;3;0;0;0;nein;"""whisper-tiny-multilingual-int8.tflite"": ""offline-placeholder:whisper:5.0.0"",";"offline-placeholder-Werte=3; vom Tooling referenziert (Gradle/CMake/Actions)"
+engines/neurallift_360/glb.py;Engine;77;STUB;STUB:5;1;0;0;18;nein;file instead of a filename stub. No cloud, no ML weights.;
+engines/neurallift_360/engine_service.py;Engine;50;STUB;STUB:2;1;0;0;0;nein;"""""""Offline NeuralLift-360 daemon stub.";
+android/app/src/main/cpp/audio_flinger_hook.cpp;Native;54;STUB;SIMULATOR:11;1;0;0;6;ja;// Portable deterministic HAL simulator: native Android builds replace this shim with;von Test referenziert
+web/wasm/dsp_core_wasm.cpp;Web;132;REAL;;0;2;0;2;ja;;von Test referenziert
+web/sw.js;Web;4;REAL;;0;0;0;26;ja;;von Test referenziert
+web/src/styles.css;Web;129;REAL;;0;0;0;5;ja;;von Test referenziert
+web/src/dsp-core.js;Web;642;REAL;;0;0;0;13;ja;;von Test referenziert
+web/src/audio-engine.js;Web;269;REAL;;0;0;0;7;ja;;von Test referenziert
+web/src/app.js;Web;1233;REAL;SHIM:677 SHIM:678;2;0;0;64;ja;{ id: 'internal_mic', label: 'Internes Mikrofon', status: selected === 'internal_mic' ? 'LOCKED' : ';"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+web/src/action-chain.js;Web;398;REAL;STUB:292;1;0;0;13;ja;* der POST gegen den One-App-Server, im Test ein Stub.;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+web/package.json;Build/CI;7;REAL;;0;0;0;20;nein;;
+web/index.html;Web;222;REAL;SHIM:204;1;0;0;26;ja;"<output id=""transcribe-output"">OFFLINE WHISPER SHIM READY</output>";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+tests/zero_cloud_socket_guard_test.py;Test;156;REAL;;0;1;0;0;nein;;
+tests/web_ui_interaction_chain_test.mjs;Test;680;REAL;STUB:5 STUB:36 STUB:253 STUB:350;4;1;0;1;ja;* `web/src/app.js` wird mit einem minimalen DOM-/WebAudio-Stub gegen einen;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+tests/web_functional_contract_test.py;Test;245;REAL;;0;1;0;0;nein;;
+tests/ui/playwright.config.mjs;Test;39;REAL;;0;0;0;2;nein;;
+tests/ui/chain.spec.mjs;Test;160;REAL;STUB:3;1;0;0;0;nein;// Ergänzt den DOM-Stub-Harness (tests/web_ui_interaction_chain_test.mjs): hier;
+tests/transient_splitter_test.cpp;Test;33;REAL;;0;0;0;1;nein;;
+tests/stress_error_resilience_test.py;Test;168;REAL;;0;1;0;0;nein;;
+tests/sse_events_stream_test.py;Test;269;REAL;;0;3;0;0;nein;;
+tests/signed_apk_test.py;Test;41;REAL;;0;1;0;0;nein;;
+tests/session_persist_replay_test.py;Test;274;REAL;;0;1;0;0;nein;;
+tests/release_artifact_guard_test.py;Test;151;REAL;STUB:4 STUB:77 STUB:79 STUB:82 STUB:83 STUB:111 STUB:115 STUB:125;8;1;0;1;nein;Negativ-Fixture ist das vorhandene Offline-Stub-APK in ``releases/`` (hat;Ersatz-Implementierung nur in Teilbereich (siehe Beleg)
+tests/permission_manifest_test.py;Test;43;REAL;;0;1;0;0;nein;;
+tests/one_app_e2e_test.py;Test;87;REAL;;0;1;0;0;nein;;
+tests/offline_ipc_socket_test.py;Test;170;REAL;;0;1;0;0;nein;;
+tests/native_audio_bridge_test.py;Test;147;REAL;;0;1;0;3;ja;;von Test referenziert
+tests/multi_avatar_sync_test.js;Test;16;REAL;;0;0;0;1;nein;;
+tests/live_capture_dsp_test.py;Test;258;REAL;;0;1;0;0;nein;;
+tests/functional_execution_audit_test.py;Test;194;REAL;;0;1;0;0;nein;;
+tests/full_chain_attributes_test.py;Test;83;REAL;;0;1;0;0;nein;;
+tests/dsp_wasm_parity_test.mjs;Test;311;REAL;;0;2;0;7;ja;;von Test referenziert
+tests/dsp_parity_harness.cpp;Test;175;REAL;;0;2;0;5;ja;;von Test referenziert
+tests/client_hal_orchestrator_test.py;Test;60;REAL;;0;1;0;0;nein;;
+tests/brickwall_limiter_test.cpp;Test;34;REAL;;0;0;0;1;nein;;
+tests/audio_latency_e2e_test.cpp;Test;28;REAL;SIMULATOR:21;1;0;0;1;nein;"std::cout << ""AudioFlinger direct-pipe simulator: route="" << status.route";Ersatz-Implementierung nur in Teilbereich (siehe Beleg)
+tests/audio_input_processor_test.cpp;Test;139;REAL;;0;0;0;1;nein;;
+tests/action_interaction_chain_test.py;Test;473;REAL;;0;2;0;0;nein;;
+tests/action_chain_ui_test.mjs;Test;296;REAL;;0;0;0;3;ja;;von Test referenziert
+scripts/verify_release_artifacts.py;Build/CI;203;REAL;STUB:7 STUB:80 STUB:186;3;1;0;3;ja;* das APK ein Offline-Stub ist (kein ``lib/<abi>/libkaoss_native.so`` oder kein;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+scripts/verify_gradle_wrapper.py;Build/CI;65;REAL;;0;1;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+scripts/run_ui_tests.sh;Build/CI;30;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+scripts/package_web_pwa.sh;Build/CI;24;REAL;;0;0;0;2;nein;;
+scripts/install_toolchains.sh;Build/CI;60;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+scripts/generate_sbom.py;Build/CI;78;REAL;;0;1;0;2;ja;;von Test referenziert
+scripts/fetch_gradle_wrapper.sh;Build/CI;34;REAL;;0;0;0;1;nein;;
+scripts/dsp_parity_vectors.py;Build/CI;219;REAL;;0;1;0;2;ja;;von Test referenziert
+scripts/create_universal_dmg.sh;Build/CI;5;REAL;;0;0;0;1;nein;;
+scripts/build_wasm.sh;Build/CI;174;REAL;;0;2;0;8;ja;;von Test referenziert
+scripts/build_signed_apk.py;Build/CI;747;REAL;STUB:5 PLACEHOLDER:654 PLACEHOLDER:675 DUMMY:706;4;2;0;0;nein;with binary AndroidManifest, stub DEX, PWA assets and native JNI sources.;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); vom Tooling referenziert (Gradle/CMake/Actions)"
+scripts/build_appimage.sh;Build/CI;10;REAL;;0;0;0;1;nein;;
+package.json;Build/CI;16;REAL;;0;0;0;19;nein;;
+package-lock.json;Build/CI;60;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+engines/whisper_offline/transcriber.py;Engine;41;REAL;;0;0;0;2;nein;;
+engines/whisper_offline/tflite_runtime.py;Engine;55;REAL;;0;0;0;4;nein;;
+engines/whisper_offline/rhyme_matrix.py;Engine;63;REAL;;0;0;0;3;nein;;
+engines/usb_uac2.py;Engine;63;REAL;;0;0;0;9;nein;;
+engines/session_engine.py;Engine;1425;REAL;SHIM:130 SHIM:912;2;2;0;9;ja;"ActionSpec(""transcribe"", ""whisper"", ""Offline Transkript (Whisper-Shim) erzeugen"", (""text"", ""signal"")";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+engines/oboe_exclusive.py;Engine;51;REAL;;0;0;0;6;nein;;
+engines/neurallift_360/midas.py;Engine;54;REAL;;0;0;0;5;nein;;
+engines/mopac_dance_learner/pose.py;Engine;39;REAL;;0;0;0;6;nein;;
+engines/localhost_ipc_suite.py;Engine;401;REAL;SHIM:43 SHIM:47;2;1;0;1;ja;"{""port"": 8081, ""name"": ""audio-loopback-daemon"", ""protocol"": ""TCP Float32 PCM"", ""latency"": ""0.4ms shi";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+engines/local_audio_probe.py;Engine;50;REAL;;0;0;0;2;nein;;
+engines/event_stream.py;Engine;117;REAL;;0;2;0;1;nein;;
+engines/dsp_chain.py;Engine;360;REAL;;0;0;0;15;ja;;von Test referenziert
+engines/device_matrix.py;Engine;127;REAL;;0;1;0;3;nein;;
+engines/ble_codecs.py;Engine;30;REAL;;0;0;0;6;nein;;
+engines/audio_capture.py;Engine;686;REAL;;0;16;0;3;nein;;
+desktop/src/main.rs;Native;11;REAL;;0;0;0;54;nein;;
+desktop/src/daemon_manager.rs;Native;16;REAL;;0;0;0;2;nein;;
+desktop/src/audio_host.rs;Native;65;REAL;;0;0;0;3;nein;;
+desktop/src-tauri/src/main.rs;Native;11;REAL;;0;0;0;54;nein;;
+desktop/src-tauri/src/daemon_manager.rs;Native;16;REAL;;0;0;0;2;nein;;
+desktop/src-tauri/src/audio_host.rs;Native;25;REAL;;0;0;0;2;nein;;
+desktop/src-tauri/Cargo.toml;Build/CI;7;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+desktop/Cargo.toml;Build/CI;7;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+app.py;Quelle;1068;REAL;;0;6;0;64;ja;;von Test referenziert
+android/settings.gradle.kts;Build/CI;4;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+android/build.gradle.kts;Build/CI;4;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+android/app/src/main/res/xml/network_security_config.xml;Build/CI;12;REAL;;0;0;0;1;nein;;
+android/app/src/main/res/values/styles.xml;Build/CI;1;REAL;;0;0;0;5;nein;;
+android/app/src/main/java/com/kaoss/studio/UsbUac2Client.kt;Native;23;REAL;;0;0;0;3;nein;;
+android/app/src/main/java/com/kaoss/studio/MainActivity.kt;Native;126;REAL;;0;0;0;4;ja;;von Test referenziert
+android/app/src/main/java/com/kaoss/studio/KaossNative.kt;Native;22;REAL;;0;0;0;7;ja;;von Test referenziert
+android/app/src/main/java/com/kaoss/studio/KaossJsBridge.kt;Native;100;REAL;;0;0;0;2;ja;;von Test referenziert
+android/app/src/main/java/com/kaoss/studio/BleCodecClient.kt;Native;14;REAL;;0;0;0;2;nein;;
+android/app/src/main/java/com/kaoss/studio/AudioInputController.kt;Native;154;REAL;;0;0;0;3;ja;;von Test referenziert
+android/app/src/main/cpp/oboe_exclusive_stream.cpp;Native;18;REAL;;0;0;0;2;nein;;
+android/app/src/main/cpp/kaoss_quad_engine.cpp;Native;56;REAL;;0;0;0;8;ja;;von Test referenziert
+android/app/src/main/cpp/kaoss_jni.cpp;Native;146;REAL;;0;0;0;1;ja;;von Test referenziert
+android/app/src/main/cpp/kaoss_dsp_abi.cpp;Native;160;REAL;;0;7;0;7;ja;;von Test referenziert
+android/app/src/main/cpp/kaoss_dsp.hpp;Native;78;REAL;;0;0;0;21;ja;;von Test referenziert
+android/app/src/main/cpp/kaoss_audio_processor.hpp;Native;74;REAL;;0;0;0;7;nein;;
+android/app/src/main/cpp/kaoss_audio_processor.cpp;Native;152;REAL;;0;0;0;6;ja;;von Test referenziert
+android/app/src/main/cpp/dsp_transient_splitter.cpp;Native;61;REAL;;0;0;0;8;ja;;von Test referenziert
+android/app/src/main/cpp/audio_input_engine.hpp;Native;68;REAL;;0;0;0;5;ja;;von Test referenziert
+android/app/src/main/cpp/audio_input_engine.cpp;Native;157;REAL;;0;0;0;5;ja;;von Test referenziert
+android/app/src/main/cpp/aaudio_input_engine.cpp;Native;115;REAL;;0;4;0;2;ja;;von Test referenziert
+android/app/src/main/assets/www/sw.js;Web;4;REAL;;0;0;0;26;ja;;von Test referenziert
+android/app/src/main/assets/www/src/styles.css;Web;129;REAL;;0;0;0;5;ja;;von Test referenziert
+android/app/src/main/assets/www/src/dsp-core.js;Web;642;REAL;;0;0;0;13;ja;;von Test referenziert
+android/app/src/main/assets/www/src/audio-engine.js;Web;269;REAL;;0;0;0;7;ja;;von Test referenziert
+android/app/src/main/assets/www/src/app.js;Web;1233;REAL;SHIM:677 SHIM:678;2;0;0;64;ja;{ id: 'internal_mic', label: 'Internes Mikrofon', status: selected === 'internal_mic' ? 'LOCKED' : ';"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+android/app/src/main/assets/www/src/action-chain.js;Web;398;REAL;STUB:292;1;0;0;13;ja;* der POST gegen den One-App-Server, im Test ein Stub.;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+android/app/src/main/assets/www/index.html;Web;222;REAL;SHIM:204;1;0;0;26;ja;"<output id=""transcribe-output"">OFFLINE WHISPER SHIM READY</output>";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+android/app/src/main/AndroidManifest.xml;Build/CI;26;REAL;;0;0;0;4;ja;;von Test referenziert
+android/app/build.gradle.kts;Build/CI;67;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+.github/workflows/release-publisher.yml;Build/CI;26;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
+.github/workflows/multiplatform-ci-cd.yml;Build/CI;245;REAL;STUB:121;1;0;0;1;ja;"sys.exit(f""STUB rejected: {artifact} has_dex={has_dex} has_so={has_so}"")";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+.github/workflows/audio-dsp-benchmark.yml;Build/CI;125;REAL;STUB:61;1;0;0;0;nein;- name: Web/UI contract + DOM-stub harness;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); vom Tooling referenziert (Gradle/CMake/Actions)"
+.github/workflows/android-signed-apk.yml;Build/CI;95;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)

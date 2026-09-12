@@ -1,0 +1,463 @@
+Zeile;Gefordert;DokuStatus;Pfade;Vorhanden;CodeStatus
+32;AAudio-Stream + Fixture-Facade | `android/app/src/main/cpp/aaudio_input_engine.cpp`, `audio_input_engine.{hpp,cpp}`;✅ DONE / ⛔ Gerät;android/app/src/main/cpp/aaudio_input_engine.cpp;1/1;REAL
+33;WASM-DSP-Einstieg + JS-Spiegel | `web/wasm/dsp_core_wasm.cpp`, `web/src/dsp-core.js`, `scripts/build_wasm.sh`;✅ DONE / ⛔ emcc;web/wasm/dsp_core_wasm.cpp web/src/dsp-core.js scripts/build_wasm.sh;3/3;REAL
+37;Localhost IPC Suite | `engines/localhost_ipc_suite.py`;✅ DONE / 🧪 SHIM;engines/localhost_ipc_suite.py;1/1;REAL
+38;Device Matrix USB/Mic/Bluetooth | `engines/device_matrix.py`;✅ DONE / 🧪 SHIM;engines/device_matrix.py;1/1;REAL
+39;Offline Reim-Matrix | `engines/whisper_offline/rhyme_matrix.py`;✅ DONE / 🧪 SHIM;engines/whisper_offline/rhyme_matrix.py;1/1;REAL
+40;NeuralLift HTTP Fallback | `engines/neurallift_360/engine_service.py`;✅ DONE / 🧪 SHIM;engines/neurallift_360/engine_service.py;1/1;STUB
+45;Android Scaffold Build | `android/gradlew`;🧪 SHIM;-;-;-
+46;Desktop Rust Host Scaffold | `desktop/`, `desktop/src-tauri/`;🧪 SHIM;-;-;-
+48;CI Workflows | `.github/workflows/`;✅ DONE / 🧪 teilweise;-;-;-
+110;Echte Audio-Capture-Blöcke (Mic/USB-UAC2/BLE) statt deterministischer Fixtures in `dsp.process`.;erledigt;-;-;-
+111;Ketten-Persistenz über App-Neustarts (Session-Store `dist/sessions/*.cypher.json` + `/api/session/latest`).;erledigt;dist/sessions/*.cypher.json;0/1;-
+112;Streaming-Events (SSE `/api/events/stream`) zusätzlich zu Polling für `/api/events`.;erledigt;-;-;-
+113;WASM-Build des C++-DSP-Kerns, damit Browser und Native identisch rechnen.;erledigt;-;-;-
+114;Playwright-basierte UI-Tests zusätzlich zum DOM-Stub-Harness.;erledigt;-;-;-
+115;Ketten-Replay aus `.cypher` (Re-Import und erneute Ausführung).;erledigt;-;-;-
+142;LC3plus/LC3-Decoder im Client – die Pipe übernimmt *decodierte* PCM-Blöcke (Android-Codec).;offen;-;-;-
+143;Hardware-Messung an echter Soundkarte/BLE-Gerät (Sandbox hat weder `/dev/snd` noch BT-Adapter).;offen;-;-;-
+144;Multi-Client-Session-Isolation (ein State pro App-Instanz).;offen;-;-;-
+145;Playwright-Browserlauf in dieser Sandbox: `cdn.playwright.dev` gesperrt ⇒ `make test-ui` meldet SKIP, CI-Job `ui-browser` führt die Specs mit Chromium aus.;offen;-;-;-
+153;Einen finalen Scope für `v5.0.0` festlegen: Demo, Beta, Hardware Preview oder Production.;offen;-;-;-
+154;Akzeptanzkriterien pro Plattform definieren: Android, Linux, macOS, Windows, Web/PWA.;offen;-;-;-
+155;Mindesthardware definieren:;offen;-;-;-
+156;Android SoC: Snapdragon/Exynos/MediaTek Klassen.;offen;-;-;-
+157;GPU/NPU: Adreno/Mali Mindestprofile.;offen;-;-;-
+158;RAM Mindestgröße.;offen;-;-;-
+159;Audio-Interface Klassen: USB Audio Class 1/2, 48/96 kHz, 24/32 Bit.;offen;-;-;-
+160;Bluetooth Profile: BLE, Classic, LC3/LC3plus, A2DP, HFP Einschränkungen.;offen;-;-;-
+161;Performance-Budgets verbindlich festlegen:;offen;-;-;-
+162;Audio Callback Dauer.;offen;-;-;-
+163;DSP CPU Budget.;offen;-;-;-
+164;ML Inferenzzeit.;offen;-;-;-
+165;UI Framezeit.;offen;-;-;-
+166;Speicherlimit pro Plattform.;offen;-;-;-
+167;Sicherheitsmodell finalisieren:;offen;-;-;-
+168;Zero-Cloud garantiert.;offen;-;-;-
+169;Kein externer DNS Lookup.;offen;-;-;-
+170;Keine Telemetrie.;offen;-;-;-
+171;Lokale Datenhaltung und Löschfunktion.;offen;-;-;-
+172;Lizenzmodell für alle Dependencies prüfen.;offen;-;-;-
+182;Echte Oboe/AAudio Engine einbauen.;offen;-;-;-
+183;Audio Callback mit Float32 Stream implementieren.;offen;-;-;-
+184;Input/Output Device Selection via Android `AudioManager` implementieren.;offen;-;-;-
+185;USB-C Audio Class Device Discovery implementieren.;offen;-;-;-
+186;Hotplug Listener für USB attach/detach implementieren.;offen;-;-;-
+187;Sample-Rate Negotiation implementieren:;offen;-;-;-
+188;44.1 kHz;offen;-;-;-
+189;48 kHz;offen;-;-;-
+190;88.2 kHz;offen;-;-;-
+191;96 kHz;offen;-;-;-
+192;Buffer-Size Negotiation implementieren:;offen;-;-;-
+193;64 Frames;offen;-;-;-
+194;96 Frames;offen;-;-;-
+195;128 Frames;offen;-;-;-
+196;256 Frames fallback;offen;-;-;-
+197;Real Roundtrip Measurement via Loopback implementieren.;offen;-;-;-
+198;Glitch/Underrun Counter implementieren.;offen;-;-;-
+199;Dropout Recovery implementieren.;offen;-;-;-
+200;Route Lock UI Status anbinden.;offen;-;-;-
+201;Android Foreground Service für stabile Audio-Session implementieren.;offen;-;-;-
+202;Low-Latency Flags prüfen:;offen;-;-;-
+203;`android.hardware.audio.low_latency`;offen;-;-;-
+204;`android.hardware.audio.pro`;offen;-;-;-
+205;Performance Mode Low Latency.;offen;-;-;-
+206;Input gain / AGC / Noise Suppression Steuerung implementieren.;offen;-;-;-
+207;Echo Canceller optional abschaltbar machen.;offen;-;-;-
+208;External DAC capabilities anzeigen.;offen;-;-;-
+209;Real AudioFlinger Remote Submix prüfen.;offen;-;-;-
+210;Rechtliche/OS-Grenzen für What-U-Hear Capture dokumentieren.;offen;-;-;-
+216;Android `UsbManager` Integration.;offen;-;-;-
+217;USB Permission Intent Flow implementieren.;offen;-;-;-
+218;Device VID/PID lesen.;offen;-;-;-
+219;Product/Manufacturer String anzeigen.;offen;-;-;-
+220;Supported sample rates anzeigen.;offen;-;-;-
+221;Supported bit depths anzeigen.;offen;-;-;-
+222;Channel Count In/Out anzeigen.;offen;-;-;-
+223;Phantom Power Detection, falls Interface API verfügbar.;offen;-;-;-
+224;DAC Clock Lock Status anzeigen.;offen;-;-;-
+225;Device reconnect ohne App-Neustart.;offen;-;-;-
+226;Fallback auf internes Mic bei USB Disconnect.;offen;-;-;-
+227;Persistente bevorzugte USB-Route speichern.;offen;-;-;-
+228;Testmatrix mit mindestens 5 USB Interfaces erstellen.;offen;-;-;-
+234;Android Runtime Permission Prompt implementieren.;offen;-;-;-
+235;Browser/PWA Mic Permission Flow finalisieren.;offen;-;-;-
+236;AudioRecord Input Stream implementieren.;offen;-;-;-
+237;Geräte-Mic Auswahl implementieren:;offen;-;-;-
+238;Top Mic;offen;-;-;-
+239;Bottom Mic;offen;-;-;-
+240;Beamforming Mic, falls verfügbar;offen;-;-;-
+241;AGC Status anzeigen.;offen;-;-;-
+242;Noise Suppression Status anzeigen.;offen;-;-;-
+243;Feedback Notch Filter implementieren.;offen;-;-;-
+244;Club-Mode Input Protection implementieren.;offen;-;-;-
+245;Live Metering für Input Peak/RMS.;offen;-;-;-
+246;Mic Calibration Screen ergänzen.;offen;-;-;-
+252;Android `BluetoothManager` Integration.;offen;-;-;-
+253;Android 12+ `BLUETOOTH_CONNECT` Runtime Flow.;offen;-;-;-
+254;Android 12+ `BLUETOOTH_SCAN` Runtime Flow.;offen;-;-;-
+255;Legacy BLE Location Flow bis SDK 30 dokumentieren.;offen;-;-;-
+256;BLE Device Scan UI.;offen;-;-;-
+257;Pairing UI.;offen;-;-;-
+258;Connected Device Status.;offen;-;-;-
+259;RSSI Anzeige.;offen;-;-;-
+260;Codec Anzeige:;offen;-;-;-
+261;SBC;offen;-;-;-
+262;AAC;offen;-;-;-
+263;aptX, falls verfügbar;offen;-;-;-
+264;LC3/LC3plus, falls verfügbar;offen;-;-;-
+265;Realistische Latenzmessung pro Codec.;offen;-;-;-
+266;Jitter Buffer implementieren.;offen;-;-;-
+267;Compensation Slider für Bluetooth Delay.;offen;-;-;-
+268;Reconnect Strategy.;offen;-;-;-
+269;Fallback bei Disconnect.;offen;-;-;-
+270;Testmatrix mit DJI Mic, Rode Wireless GO, Hollyland etc.;offen;-;-;-
+276;Linux ALSA Backend implementieren.;offen;-;-;-
+277;Linux PipeWire Backend implementieren.;offen;-;-;-
+278;Linux JACK Backend optional.;offen;-;-;-
+279;macOS CoreAudio Backend implementieren.;offen;-;-;-
+280;Windows WASAPI Backend implementieren.;offen;-;-;-
+281;Windows ASIO Backend implementieren.;offen;-;-;-
+282;ASIO SDK Lizenz-/Download-Prozess dokumentieren.;offen;-;-;-
+283;Multi-device aggregate device handling.;offen;-;-;-
+284;Latency calibration pro OS.;offen;-;-;-
+285;Device hotplug Events pro OS.;offen;-;-;-
+286;Audio route UI mit Desktop Backend verbinden.;offen;-;-;-
+296;Oversampling für true peak limiting ergänzen.;offen;-;-;-
+297;Lookahead optional ergänzen.;offen;-;-;-
+298;Release/Attack Parameter exposed machen.;offen;-;-;-
+299;Soft-knee Kurve messbar dokumentieren.;offen;-;-;-
+300;LUFS/RMS Metering ergänzen.;offen;-;-;-
+301;SIMD Optimierung prüfen:;offen;-;-;-
+302;NEON Android/ARM;offen;-;-;-
+303;SSE/AVX Desktop;offen;-;-;-
+304;Fuzz Tests mit Random Audio ergänzen.;offen;-;-;-
+310;FFTW3 oder KissFFT Pipeline implementieren.;offen;-;-;-
+311;Multi-band transient detection:;offen;-;-;-
+312;20–90 Hz Kick/Mouth Bass;offen;-;-;-
+313;3–8 kHz Snare/Clap;offen;-;-;-
+314;8–16 kHz Hi-Hat/Roll;offen;-;-;-
+315;Pitch detection für Mouth-Bass.;offen;-;-;-
+316;Envelope follower implementieren (aktuell Mean-Abs-/Delta-Energie im Transient-Detektor).;offen;-;-;-
+317;PLL/BPM Sync implementieren.;offen;-;-;-
+318;Quantisierung 1/16 und 1/32 (`loop.capture` mit `subdivision` 4–64, BPM-Step in `state.transport.loop_step_ms`).;erledigt;-;-;-
+319;808 Oscillator als modulare Voice (`dsp_chain.synthesize_808`, C++ `synthesize_808`, Pad-Bank A).;erledigt;-;-;-
+320;Decay, Glide, Saturation UI Parameter.;offen;-;-;-
+321;Sample-Layer Snare/Clap Engine.;offen;-;-;-
+322;Hi-hat noise synth.;offen;-;-;-
+323;Preset-System:;offen;-;-;-
+324;Boom-Bap (vorhanden: `90s_tape`, `acid_berlin`, `cyber_drill`, `lofi_cypher`);offen;-;-;-
+325;Drill;offen;-;-;-
+326;Acid Berlin;offen;-;-;-
+327;Lo-Fi;offen;-;-;-
+328;Audio fixture tests ergänzen.;offen;-;-;-
+329;Hardware latency tests ergänzen.;offen;-;-;-
+335;Vollständige 4-Engine DSP Chain.;offen;-;-;-
+336;XY Pad Mapping pro Engine (`kaoss.xy` pro Modul 0-3, Preset-Mapping in `preset.apply`, UI-XY-Pad-Dispatch).;erledigt;-;-;-
+337;Freeze pro Engine innerhalb der Session persistent (`kaoss.freeze`, `held`-Antwort auf frozen XY).;erledigt;-;-;-
+338;Freeze über App-Neustart/Export-Re-Import persistent machen.;offen;-;-;-
+339;Looper Engine implementieren (`loop.capture` ⇒ BPM-quantisierter Loop + Looper-Freeze, deterministische Wiedergabe getestet).;erledigt;-;-;-
+340;Reverse Loop implementieren.;offen;-;-;-
+341;Slicer mit 8 Slices implementieren.;offen;-;-;-
+342;Grain Pitch implementieren.;offen;-;-;-
+343;Vinyl Break: Wow/Flutter + Nadelrauschen im Python-Spiegel (`kaoss.xy` Modul 1), echtes Physikmodell offen.;teilweise;-;-;-
+344;Tape Scratch.;offen;-;-;-
+345;Flanger Jet.;offen;-;-;-
+346;Ducking Compressor.;offen;-;-;-
+347;Moog-style Ladder Filter.;offen;-;-;-
+348;Vowel/Formant Morph A-E-I-O-U.;offen;-;-;-
+349;Tape Echo: Ambience-/Feedback-Term + Wow/Flutter vorhanden, echtes Band-Modell offen.;teilweise;-;-;-
+350;Ping-Pong Delay.;offen;-;-;-
+351;Dark Hall Reverb.;offen;-;-;-
+352;KP3+ 8x8 LED Matrix UI (XY-Orb + Transient-Flash + Freeze-Anzeige, `web/src/app.js` `paintLedMatrix`).;erledigt;web/src/app.js;1/1;REAL
+353;Sample Banks A/B/C/D (`pad.trigger` mit 16 Slots, Transient + 808-Voice, UI-Pad-Grid).;erledigt;-;-;-
+354;Resampling Engine.;offen;-;-;-
+355;Master FX Release Slider.;offen;-;-;-
+356;MIDI Mapping optional.;offen;-;-;-
+366;Echtes `whisper.tflite` Modell integrieren.;offen;-;-;-
+367;Quantisierte Modellvarianten definieren:;offen;-;-;-
+368;tiny int8;offen;-;-;-
+369;base int8 optional;offen;-;-;-
+370;multilingual vs german-optimized;offen;-;-;-
+371;TensorFlow Lite Runtime integrieren.;offen;-;-;-
+372;NNAPI Delegate optional.;offen;-;-;-
+373;Metal/CoreML Delegate für macOS optional.;offen;-;-;-
+374;ONNX Runtime Alternative prüfen.;offen;-;-;-
+375;Streaming Audio Buffer 500 ms implementieren.;offen;-;-;-
+376;VAD implementieren.;offen;-;-;-
+377;Partial Transcript Events.;offen;-;-;-
+378;Word timestamps.;offen;-;-;-
+379;Offline Language Detection.;offen;-;-;-
+380;Profanity/Slang handling ohne Cloud.;offen;-;-;-
+381;Performance Benchmark pro Plattform.;offen;-;-;-
+387;Vollständige 85.000+ Einträge importieren.;offen;-;-;-
+388;Phonetischen Index erzeugen.;offen;-;-;-
+389;Deutsch/Berlin Slang Datenmodell.;offen;-;-;-
+390;Assonanzsuche.;offen;-;-;-
+391;Kadenz/Silbenzahl berechnen.;offen;-;-;-
+392;Flow-Abbruch-Erkennung >600 ms.;offen;-;-;-
+393;Vorschlagsranking.;offen;-;-;-
+394;Session-Learning lokal speichern.;offen;-;-;-
+395;Datenschutz: Export/Löschen aller lokalen Lernprofile.;offen;-;-;-
+401;Bildimport Pipeline implementieren.;offen;-;-;-
+402;Depth Estimation:;offen;-;-;-
+403;MiDaS;offen;-;-;-
+404;ZoeDepth;offen;-;-;-
+405;mobile quantized variants;offen;-;-;-
+406;Normal Estimation.;offen;-;-;-
+407;Mesh Reconstruction.;offen;-;-;-
+408;Texture Projection.;offen;-;-;-
+409;GLB/GLTF Export.;offen;-;-;-
+410;LOD 0 45k tris.;offen;-;-;-
+411;LOD 1 18k tris.;offen;-;-;-
+412;Auto-Rigging 24 Bones.;offen;-;-;-
+413;Blendshape Support optional.;offen;-;-;-
+414;Fallback Avatar Library.;offen;-;-;-
+415;GPU timeout recovery.;offen;-;-;-
+416;Memory budget enforcement.;offen;-;-;-
+417;Inference benchmark target 1.8s prüfen.;offen;-;-;-
+423;MediaPipe Pose Integration.;offen;-;-;-
+424;33-Punkt Skeleton Stream.;offen;-;-;-
+425;Kamera Permission Flow.;offen;-;-;-
+426;Live MoCap Preview.;offen;-;-;-
+427;BVH Export.;offen;-;-;-
+428;BVH Import.;offen;-;-;-
+429;Video Import.;offen;-;-;-
+430;Move Segmentation.;offen;-;-;-
+431;Transient Marker Binding.;offen;-;-;-
+432;Move Profile Slots A/B/C/D.;offen;-;-;-
+433;Gesture Cleanup/Smoothing.;offen;-;-;-
+434;Foot lock correction.;offen;-;-;-
+435;Retargeting auf 24-Bone Avatar.;offen;-;-;-
+445;Health Endpoint.;erledigt;-;-;-
+446;Native Bridge PortView Endpoint.;erledigt;-;-;-
+447;Device Status/Select Endpoint.;erledigt;-;-;-
+448;Persistente Session State Machine.;offen;-;-;-
+449;Profile laden/speichern.;offen;-;-;-
+450;Watchdog für alle Daemons.;offen;-;-;-
+451;Prozess-Restart Strategie.;offen;-;-;-
+452;Log Stream Endpoint.;offen;-;-;-
+453;Config Export/Import.;offen;-;-;-
+457;TCP PCM Shim.;erledigt;-;-;-
+458;Real Float32 PCM Stream.;offen;-;-;-
+459;Ringbuffer Shared Memory.;offen;-;-;-
+460;Backpressure handling.;offen;-;-;-
+461;Clock drift correction.;offen;-;-;-
+462;Route negotiation.;offen;-;-;-
+466;Health/Default Mesh Endpoint.;erledigt;-;-;-
+467;Upload Foto Endpoint.;offen;-;-;-
+468;Job Queue.;offen;-;-;-
+469;Progress Events.;offen;-;-;-
+470;GLB Binary Response.;offen;-;-;-
+471;GPU/CPU Fallback.;offen;-;-;-
+475;TCP JSONL Skeleton Shim.;erledigt;-;-;-
+476;WebSocket Server.;offen;-;-;-
+477;FlatBuffers Schema.;offen;-;-;-
+478;60 FPS skeletal transform stream.;offen;-;-;-
+479;Multi-avatar state replication.;offen;-;-;-
+480;Cypher/Unisono/Chaos mode engine.;offen;-;-;-
+484;UDP JSON Shim.;erledigt;-;-;-
+485;64-byte binary datagram format.;offen;-;-;-
+486;BPM event stream.;offen;-;-;-
+487;Kick/Snare/Hat event stream.;offen;-;-;-
+488;Clock sync with audio engine.;offen;-;-;-
+489;Packet loss stats.;offen;-;-;-
+493;Transcribe Shim.;erledigt;-;-;-
+494;Rhymes Endpoint.;erledigt;-;-;-
+495;Streaming IPC pipe.;offen;-;-;-
+496;Real TFLite inference.;offen;-;-;-
+497;Word-level alignment.;offen;-;-;-
+498;Reim ranking.;offen;-;-;-
+506;Single process app server `app.py`.;erledigt;app.py;1/1;REAL
+507;Web UI und lokale APIs in einer Anwendung.;erledigt;-;-;-
+508;One-App E2E Test.;erledigt;-;-;-
+509;Native Android Shell mit gleichem One-App Modell.;offen;-;-;-
+510;Desktop Bundle mit gleichem One-App Modell.;offen;-;-;-
+514;Hero Screen.;erledigt;-;-;-
+515;Kaoss XY Pad.;erledigt;-;-;-
+516;Native Bridge PortView.;erledigt;-;-;-
+517;Plug-&-Play Audio I/O Matrix.;erledigt;-;-;-
+518;Permission Cards.;erledigt;-;-;-
+519;PWA Manifest.;erledigt;-;-;-
+520;Service Worker Offline Cache.;erledigt;-;-;-
+524;Design Tokens zentralisieren:;offen;-;-;-
+525;`#ff7a00` Amber Glow;offen;-;-;-
+526;`#00f5d4` Neon Cyan;offen;-;-;-
+527;`#111318` Dark Shell;offen;-;-;-
+528;Panel colors;offen;-;-;-
+529;Status colors;offen;-;-;-
+530;Accessibility prüfen:;offen;-;-;-
+531;Kontrast;offen;-;-;-
+532;Focus states;offen;-;-;-
+533;Screen reader labels;offen;-;-;-
+534;Large touch targets;offen;-;-;-
+535;Mobile 390px Layout finalisieren.;offen;-;-;-
+536;Tablet Layout.;offen;-;-;-
+537;Desktop 3-panel Layout.;offen;-;-;-
+538;Offline Error States.;offen;-;-;-
+539;No-device fallback states.;offen;-;-;-
+540;Permission denied recovery UI.;offen;-;-;-
+541;Bluetooth pairing failure UI.;offen;-;-;-
+542;USB disconnect toast.;offen;-;-;-
+543;Club/Night Mode.;offen;-;-;-
+569;Select für USB/Mic/Bluetooth.;erledigt;-;-;-
+570;Statuskarten.;erledigt;-;-;-
+571;Permissionkarten.;erledigt;-;-;-
+572;Latency/Route Anzeige.;erledigt;-;-;-
+573;Real hardware icon states.;offen;-;-;-
+574;Device detail drawer.;erledigt;-;-;-
+575;Input gain slider.;erledigt;-;-;-
+576;Monitor mix slider.;erledigt;-;-;-
+577;Bluetooth delay compensation UI.;erledigt;-;-;-
+578;USB sample-rate override.;erledigt;-;-;-
+579;Mic AGC toggle.;erledigt;-;-;-
+580;Noise suppression toggle.;erledigt;-;-;-
+581;Test tone / loopback calibration button.;erledigt;-;-;-
+591;"Offiziellen Gradle Wrapper erzeugen und committen (Jar offline nicht erzeugbar; `scripts/verify_gradle_wrapper.py` + `scripts/fetch_gradle_wrapper.sh`, CI nutzt `gradle/actions/set";teilweise;scripts/verify_gradle_wrapper.py scripts/fetch_gradle_wrapper.sh;2/2;REAL
+592;Kotlin/Java MainActivity vollständig (WebView + JS Bridge).;erledigt;-;-;-
+593;"Native Library laden (`System.loadLibrary(""kaoss_native"")`).";erledigt;-;-;-
+594;JNI Bridge für DSP (`kaoss_jni.cpp`: pipe, limiter, transient, audio input).;erledigt;kaoss_jni.cpp;0/1;-
+595;JNI Bridge für Device Matrix (`audioInputStatus`, `usbSnapshot`, `bleNegotiate`, `permissionState`, `start/stopAudioCapture`).;erledigt;-;-;-
+596;Runtime Permissions UI (RECORD_AUDIO / Bluetooth 12+).;erledigt;-;-;-
+597;Foreground Audio Service.;offen;-;-;-
+598;"Release Signing konfigurieren (Keystore via Secrets oder CI-generiert; APK v1+v2 Signatur im Workflow).";erledigt;-;-;-
+599;"AAB Build real validieren (Workflow `bundleRelease`; Runner-Lauf offen).";teilweise;-;-;-
+600;APK Build auf Gerät installieren.;offen;-;-;-
+601;Hardware loopback test auf Gerät.;offen;-;-;-
+605;Tauri oder alternative Desktop Shell finalisieren.;offen;-;-;-
+606;AppImage Builder integrieren.;offen;-;-;-
+607;Debian Package Builder.;offen;-;-;-
+608;ALSA/PipeWire real testen.;offen;-;-;-
+609;udev rules für USB Audio prüfen.;offen;-;-;-
+610;Desktop file, icon, MIME types.;offen;-;-;-
+614;Universal Binary Build.;offen;-;-;-
+615;CoreAudio Backend.;offen;-;-;-
+616;Metal/Accelerate optional.;offen;-;-;-
+617;`.dmg` Builder.;offen;-;-;-
+618;Codesigning.;offen;-;-;-
+619;Notarization.;offen;-;-;-
+620;Microphone entitlement.;offen;-;-;-
+621;Hardened Runtime.;offen;-;-;-
+625;WASAPI Backend.;offen;-;-;-
+626;ASIO Backend.;offen;-;-;-
+627;MSI Builder.;offen;-;-;-
+628;Portable ZIP.;offen;-;-;-
+629;Driver detection.;offen;-;-;-
+630;Code signing.;offen;-;-;-
+631;Windows audio permission/onboarding.;offen;-;-;-
+635;Offline Cache.;erledigt;-;-;-
+636;PWA Manifest.;erledigt;-;-;-
+637;Install prompt UI.;offen;-;-;-
+638;WebAudio Input Capture (`audio-engine.js`: getUserMedia + DSP-Kern-Analyse + Transient-Events).;erledigt;audio-engine.js;0/1;-
+639;WebMIDI optional.;offen;-;-;-
+640;"WASM DSP Build (`web/wasm/dsp_core_wasm.cpp` + `scripts/build_wasm.sh`; JS-Spiegel als Fallback; Emscripten-Lauf offen).";teilweise;web/wasm/dsp_core_wasm.cpp scripts/build_wasm.sh;2/2;REAL
+641;SharedArrayBuffer/Cross-Origin Isolation prüfen.;offen;-;-;-
+642;Browser storage quota handling.;offen;-;-;-
+650;GitHub Actions Syntax mit `actionlint` prüfen.;offen;-;-;-
+651;CMake/Ninja Linux Build real im Runner prüfen.;offen;-;-;-
+652;Android Gradle Build echt machen.;offen;-;-;-
+653;macOS Build auf `macos-latest` validieren.;offen;-;-;-
+654;Windows Build auf `windows-latest` validieren.;offen;-;-;-
+655;Artifact names finalisieren.;offen;-;-;-
+656;Checksums erzeugen.;offen;-;-;-
+657;SBOM erzeugen.;offen;-;-;-
+658;Release Notes Template.;offen;-;-;-
+659;Version aus Tag automatisch in App übernehmen.;offen;-;-;-
+660;Signing Secrets definieren:;offen;-;-;-
+661;Android keystore;offen;-;-;-
+662;Apple Developer ID;offen;-;-;-
+663;Windows code signing cert;offen;-;-;-
+664;Secretless offline fallback dokumentieren.;offen;-;-;-
+665;Release workflow nur auf Tags oder manuell.;offen;-;-;-
+666;PR checks für Tests.;offen;-;-;-
+667;Nightly benchmark workflow.;offen;-;-;-
+675;Audio latency simulator.;erledigt;-;-;-
+676;Limiter test.;erledigt;-;-;-
+677;Transient splitter test.;erledigt;-;-;-
+678;Audio-Input→DSP-Prozessor + Engine-Fixture (19 Checks, `audio_input_processor_test.cpp`).;erledigt;audio_input_processor_test.cpp;0/1;-
+679;Localhost IPC test ports `8080–8085`.;erledigt;-;-;-
+680;Multi-avatar synthetic FPS benchmark.;erledigt;-;-;-
+681;Android permission manifest test.;erledigt;-;-;-
+682;Full action & interaction chain test (HTTP, 236 Checks).;erledigt;-;-;-
+683;Browser chain module test (offline + live server, 89 Checks).;erledigt;-;-;-
+684;Headless UI interaction test mit DOM-Stub (107 Checks inkl. SCREEN_6/14/29).;erledigt;-;-;-
+685;Zero-cloud socket monkeypatch gate.;erledigt;-;-;-
+686;Web/Server chain parity test (Katalog, Skript, Ports, Guards).;erledigt;-;-;-
+687;Native Audio-Bridge Contract (JNI↔Kotlin↔WASM↔JS, 39 Checks).;erledigt;-;-;-
+688;Release-Artifact-Guard (Platzhalter-Erkennung, 13 Checks).;erledigt;-;-;-
+692;Real hardware roundtrip latency test.;offen;-;-;-
+693;USB hotplug integration test.;offen;-;-;-
+694;Bluetooth pairing integration test.;offen;-;-;-
+695;Mic permission denial test.;offen;-;-;-
+696;Audio underrun stress test.;offen;-;-;-
+697;Long-running audio soak test.;offen;-;-;-
+698;NeuralLift image-to-GLB golden test.;offen;-;-;-
+699;Whisper fixture transcription test.;offen;-;-;-
+700;Rhyme ranking test with 85k DB.;offen;-;-;-
+701;Web UI tests: headless DOM-Stub-Harness gegen echten Server vorhanden (`tests/web_ui_interaction_chain_test.mjs`), echte Playwright-Browser-Runs offen.;teilweise;tests/web_ui_interaction_chain_test.mjs;1/1;REAL
+702;Accessibility test.;offen;-;-;-
+703;PWA offline install test.;offen;-;-;-
+704;CI release dry-run test.;offen;-;-;-
+705;Zero external network enforcement with socket monkeypatch (`tests/zero_cloud_socket_guard_test.py`).;erledigt;tests/zero_cloud_socket_guard_test.py;1/1;REAL
+706;"Malformed/invalid Aktionen getestet (unbekannte Aktion ⇒ `400`, ungültige Input/Preset/Bank/Slot/Avatar-Mode ⇒ `ERROR`); systematischer Fuzzer offen.";teilweise;-;-;-
+712;Echtes Whisper Modell beschaffen und lizenzieren.;offen;-;-;-
+713;Model checksum manifest.;offen;-;-;-
+714;NeuralLift/Depth Modelle beschaffen und lizenzieren.;offen;-;-;-
+715;Motion Diffusion/EDGE Modelle beschaffen und lizenzieren.;offen;-;-;-
+716;MediaPipe assets prüfen.;offen;-;-;-
+717;808/Snare/Hat Sample Library erstellen oder lizenzieren.;offen;-;-;-
+718;KP3+/Kaoss inspirierte, aber rechtlich eigene Presets erstellen.;offen;-;-;-
+719;Icons erstellen.;offen;-;-;-
+720;App screenshots.;offen;-;-;-
+721;Store metadata.;offen;-;-;-
+722;Demo project/session assets.;offen;-;-;-
+723;Datenschutztexte.;offen;-;-;-
+724;Offline Manual.;offen;-;-;-
+730;Netzwerk-Policy pro Plattform implementieren.;offen;-;-;-
+731;Android Network Security Config: external cleartext blockieren.;offen;-;-;-
+732;Firewall/Test gegen externe Sockets.;offen;-;-;-
+733;Keine Analytics SDKs.;offen;-;-;-
+734;Keine Crash Cloud SDKs ohne explizite Opt-in Alternative.;offen;-;-;-
+735;Lokale Logs rotieren.;offen;-;-;-
+736;Sensitive Audio automatisch lokal verschlüsseln optional.;offen;-;-;-
+737;Löschfunktion für Sessions.;offen;-;-;-
+738;Export-Funktion für lokale Daten.;offen;-;-;-
+739;Permission rationale UI.;offen;-;-;-
+740;"IPC-Endpoints: Rollentrennung pro Daemon (`403` für fremde Aktionen) implementiert und getestet; formales Review-Dokument offen.";teilweise;-;-;-
+741;Bind nur `127.0.0.1` validieren (Zero-Cloud-Gate prüft `server_address` und blockt Nicht-Loopback-Ziele).;erledigt;-;-;-
+742;CSRF/Origin-Schutz für localhost HTTP (fremder `Origin`/`Referer` auf POST ⇒ `403`, Loopback ⇒ erlaubt, getestet).;erledigt;-;-;-
+748;FFTW3 vs KissFFT Lizenzentscheidung.;offen;-;-;-
+749;TFLite Lizenz prüfen.;offen;-;-;-
+750;ONNX Runtime Lizenz prüfen.;offen;-;-;-
+751;MediaPipe Lizenz prüfen.;offen;-;-;-
+752;Three.js Lizenz prüfen.;offen;-;-;-
+753;Tauri Lizenz und Bundle-Lizenzen.;offen;-;-;-
+754;ASIO SDK Lizenz manuell prüfen.;offen;-;-;-
+755;Audio Samples lizenzieren.;offen;-;-;-
+756;ML Model Licenses inventarisieren.;offen;-;-;-
+757;SBOM automatisieren.;offen;-;-;-
+765;"`KaossBeatboxStudio-v5.0.0-Universal-Signed.apk` (Workflow baut echten Gradle-APK; lokales `releases/`-Exemplar ist ein Offline-Stub und wird vom Guard abgelehnt).";teilweise;-;-;-
+766;"`KaossBeatboxStudio-v5.0.0-Universal.aab` (Workflow `bundleRelease`; Runner-Lauf offen).";teilweise;-;-;-
+767;`KaossBeatboxStudio-v5.0.0-x86_64.AppImage`;offen;-;-;-
+768;`KaossBeatboxStudio-v5.0.0-Universal.dmg`;offen;-;-;-
+769;`KaossBeatboxStudio-v5.0.0-Setup.msi`;offen;-;-;-
+770;`KaossBeatboxStudio-WebAssembly-Offline.zip` als PWA ZIP (inkl. WASM-Build bei vorhandenem Emscripten).;erledigt;-;-;-
+771;SHA256SUMS Datei (im Publish-Job erzeugt).;erledigt;-;-;-
+772;GPG Signaturen optional.;offen;-;-;-
+773;Release Notes.;offen;-;-;-
+774;Installationsanleitung pro OS.;offen;-;-;-
+775;Known Issues Liste.;offen;-;-;-
+824;Echte Audioaufnahme funktioniert auf Android per USB-C, internem Mic und Bluetooth.;offen;-;-;-
+825;Eingangsquelle ist zur Laufzeit ohne Neustart umschaltbar.;offen;-;-;-
+826;Statusanzeige zeigt echte Geräte- und Permissionzustände.;offen;-;-;-
+827;DSP läuft im echten Audio Callback stabil ohne Dropouts.;offen;-;-;-
+828;Latenz wurde auf echter Hardware gemessen und dokumentiert.;offen;-;-;-
+829;Whisper transkribiert echte Live-Audioeingaben offline.;offen;-;-;-
+830;Reim-Matrix enthält Produktionsdatenbestand.;offen;-;-;-
+831;NeuralLift erzeugt aus Foto echte GLB Avatare offline.;offen;-;-;-
+832;MediaPipe/MoCap/BVH Pipeline funktioniert offline.;offen;-;-;-
+833;Alle UI-Screens aus dem Katalog sind implementiert.;offen;-;-;-
+834;Android, Linux, macOS, Windows und Web Artefakte sind echte installierbare Builds.;offen;-;-;-
+835;CI/CD erzeugt und veröffentlicht echte signierte Release-Artefakte.;offen;-;-;-
+836;Zero-Cloud wurde automatisiert und manuell validiert.;offen;-;-;-
+837;Datenschutz-, Lizenz- und Sicherheitsprüfung abgeschlossen.;offen;-;-;-

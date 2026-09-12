@@ -253,6 +253,22 @@ function flashAction(event) {
  * Eine Aktion ausführen: POST an die One-App State Engine, bei fehlendem Backend
  * deterministischer Offline-Fallback (statische PWA-Preview).
  */
+// Dasselbe Ketten-Event kommt über zwei Wege: als fetch-Antwort der Aktion und
+// als SSE-Push (der Server published während des POSTs, der Push ist oft
+// schneller). Seq allein reicht nicht zur Erkennung – nach `chain.reset` zählt
+// sie bei 1 neu und BLOCKED-Events erhöhen sie gar nicht (belegt: reset seq=1,
+// blocked seq=1). Deshalb Dedup über die Event-Identität.
+const appliedChainEvents = new Set();
+
+function applyChainEvent(event) {
+  if (!event) return false;
+  const key = `${event.seq ?? "x"}:${event.action ?? ""}:${event.t_ms ?? ""}`;
+  if (appliedChainEvents.has(key)) return false;
+  appliedChainEvents.add(key);
+  chainState = chainReducer(chainState, event);
+  return true;
+}
+
 async function dispatchAction(action, params = {}) {
   const request = createAction(action, params);
   let event;
@@ -296,7 +312,7 @@ async function dispatchAction(action, params = {}) {
       chainState.offlineFallback = false;
     }
   }
-  chainState = chainReducer(chainState, event);
+  applyChainEvent(event);
   renderChain(event);
   await loadNativePortForTask(action, event);
   return event;
@@ -327,6 +343,7 @@ async function runFullChain() {
   // Die Referenzkette startet immer aus einem definierten Zustand.
   await dispatchAction('chain.reset');
   chainState = defaultState();
+  appliedChainEvents.clear();
   renderChain();
   // dispatchAction reduziert jedes Event genau einmal in chainState – deshalb
   // hier bewusst keine zweite Reduktion über runChain().
@@ -345,6 +362,7 @@ document.querySelector('#run-full-chain').addEventListener('click', runFullChain
 document.querySelector('#chain-reset').addEventListener('click', async () => {
   await dispatchAction('chain.reset');
   chainState = defaultState();
+  appliedChainEvents.clear();
   renderChain();
 });
 
@@ -1000,7 +1018,8 @@ async function hydrateFromServer() {
     if (state?.chain?.length) {
       const events = await fetch(`/api/events?since=0`, { cache: 'no-store' }).then((res) => (res.ok ? res.json() : { events: [] }));
       chainState = defaultState();
-      (events.events || []).forEach((event) => { chainState = chainReducer(chainState, event); });
+      appliedChainEvents.clear();
+      (events.events || []).forEach((event) => { applyChainEvent(event); });
     }
     if (state?.input?.selected) inputSelect.value = state.input.selected;
     renderChain();
@@ -1047,9 +1066,9 @@ function connectEventStream(since = chainState.seq || 0) {
       return;
     }
     lastStreamEventMs = Date.now();
-    // dispatchAction() reduziert sein eigenes Event bereits – Doppelzählung vermeiden.
-    if ((payload.seq ?? 0) > (chainState.seq ?? 0)) {
-      chainState = chainReducer(chainState, { ...payload, detail: payload.detail_summary || {} });
+    // dispatchAction() reduziert dasselbe Event bereits – Dedup verhindert die
+    // Doppelzählung, egal welcher Weg zuerst ankommt.
+    if (applyChainEvent({ ...payload, detail: payload.detail_summary || {} })) {
       renderChain(payload);
     }
     streamLabel(`STREAM: LIVE // seq ${payload.seq} ${payload.action} ${payload.status}`);
