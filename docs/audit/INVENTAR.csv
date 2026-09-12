@@ -1,5 +1,4 @@
 Datei;Kategorie;Zeilen;Status;Marker;MarkerAnzahl;DummyReturns;NotImplemented;Referenzen;TestReferenz;Beleg;Hinweis
-scripts/audit_inventory.py;Build/CI;318;PLACEHOLDER;MOCK:2 PLACEHOLDER:11 STUB:12 MOCK:14 DUMMY:19 STUB:37 SHIM:39 MOCK:46;20;4;0;0;nein;"""""""Audit-Inventar: welche Datei ist REAL, MOCK, STUB, TODO, FIXME, PLACEHOLDER oder DEAD?";vom Tooling referenziert (Gradle/CMake/Actions)
 engines/neurallift_360/scripts/download_weights.py;Build/CI;44;PLACEHOLDER;PLACEHOLDER:12 PLACEHOLDER:13 PLACEHOLDER:14;3;0;0;0;nein;"""whisper-tiny-multilingual-int8.tflite"": ""offline-placeholder:whisper:5.0.0"",";"offline-placeholder-Werte=3; vom Tooling referenziert (Gradle/CMake/Actions)"
 engines/neurallift_360/glb.py;Engine;77;STUB;STUB:5;1;0;0;18;nein;file instead of a filename stub. No cloud, no ML weights.;
 engines/neurallift_360/engine_service.py;Engine;50;STUB;STUB:2;1;0;0;0;nein;"""""""Offline NeuralLift-360 daemon stub.";
@@ -9,10 +8,10 @@ web/sw.js;Web;4;REAL;;0;0;0;26;ja;;von Test referenziert
 web/src/styles.css;Web;129;REAL;;0;0;0;5;ja;;von Test referenziert
 web/src/dsp-core.js;Web;642;REAL;;0;0;0;13;ja;;von Test referenziert
 web/src/audio-engine.js;Web;269;REAL;;0;0;0;7;ja;;von Test referenziert
-web/src/app.js;Web;1233;REAL;SHIM:677 SHIM:678;2;0;0;64;ja;{ id: 'internal_mic', label: 'Internes Mikrofon', status: selected === 'internal_mic' ? 'LOCKED' : ';"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+web/src/app.js;Web;1252;REAL;SHIM:695 SHIM:696;2;0;0;64;ja;{ id: 'internal_mic', label: 'Internes Mikrofon', status: selected === 'internal_mic' ? 'LOCKED' : ';"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
 web/src/action-chain.js;Web;398;REAL;STUB:292;1;0;0;13;ja;* der POST gegen den One-App-Server, im Test ein Stub.;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
 web/package.json;Build/CI;7;REAL;;0;0;0;20;nein;;
-web/index.html;Web;222;REAL;SHIM:204;1;0;0;26;ja;"<output id=""transcribe-output"">OFFLINE WHISPER SHIM READY</output>";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+web/index.html;Web;223;REAL;SHIM:205;1;0;0;26;ja;"<output id=""transcribe-output"">OFFLINE WHISPER SHIM READY</output>";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
 tests/zero_cloud_socket_guard_test.py;Test;156;REAL;;0;1;0;0;nein;;
 tests/web_ui_interaction_chain_test.mjs;Test;680;REAL;STUB:5 STUB:36 STUB:253 STUB:350;4;1;0;1;ja;* `web/src/app.js` wird mit einem minimalen DOM-/WebAudio-Stub gegen einen;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
 tests/web_functional_contract_test.py;Test;245;REAL;;0;1;0;0;nein;;
@@ -52,6 +51,7 @@ scripts/create_universal_dmg.sh;Build/CI;5;REAL;;0;0;0;1;nein;;
 scripts/build_wasm.sh;Build/CI;174;REAL;;0;2;0;8;ja;;von Test referenziert
 scripts/build_signed_apk.py;Build/CI;747;REAL;STUB:5 PLACEHOLDER:654 PLACEHOLDER:675 DUMMY:706;4;2;0;0;nein;with binary AndroidManifest, stub DEX, PWA assets and native JNI sources.;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); vom Tooling referenziert (Gradle/CMake/Actions)"
 scripts/build_appimage.sh;Build/CI;10;REAL;;0;0;0;1;nein;;
+scripts/audit_inventory.py;Build/CI;319;REAL;;0;4;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
 package.json;Build/CI;16;REAL;;0;0;0;19;nein;;
 package-lock.json;Build/CI;60;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
 engines/whisper_offline/transcriber.py;Engine;41;REAL;;0;0;0;2;nein;;
@@ -103,9 +103,9 @@ android/app/src/main/assets/www/sw.js;Web;4;REAL;;0;0;0;26;ja;;von Test referenz
 android/app/src/main/assets/www/src/styles.css;Web;129;REAL;;0;0;0;5;ja;;von Test referenziert
 android/app/src/main/assets/www/src/dsp-core.js;Web;642;REAL;;0;0;0;13;ja;;von Test referenziert
 android/app/src/main/assets/www/src/audio-engine.js;Web;269;REAL;;0;0;0;7;ja;;von Test referenziert
-android/app/src/main/assets/www/src/app.js;Web;1233;REAL;SHIM:677 SHIM:678;2;0;0;64;ja;{ id: 'internal_mic', label: 'Internes Mikrofon', status: selected === 'internal_mic' ? 'LOCKED' : ';"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+android/app/src/main/assets/www/src/app.js;Web;1252;REAL;SHIM:695 SHIM:696;2;0;0;64;ja;{ id: 'internal_mic', label: 'Internes Mikrofon', status: selected === 'internal_mic' ? 'LOCKED' : ';"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
 android/app/src/main/assets/www/src/action-chain.js;Web;398;REAL;STUB:292;1;0;0;13;ja;* der POST gegen den One-App-Server, im Test ein Stub.;"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
-android/app/src/main/assets/www/index.html;Web;222;REAL;SHIM:204;1;0;0;26;ja;"<output id=""transcribe-output"">OFFLINE WHISPER SHIM READY</output>";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
+android/app/src/main/assets/www/index.html;Web;223;REAL;SHIM:205;1;0;0;26;ja;"<output id=""transcribe-output"">OFFLINE WHISPER SHIM READY</output>";"Ersatz-Implementierung nur in Teilbereich (siehe Beleg); von Test referenziert"
 android/app/src/main/AndroidManifest.xml;Build/CI;26;REAL;;0;0;0;4;ja;;von Test referenziert
 android/app/build.gradle.kts;Build/CI;67;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)
 .github/workflows/release-publisher.yml;Build/CI;26;REAL;;0;0;0;0;nein;;vom Tooling referenziert (Gradle/CMake/Actions)

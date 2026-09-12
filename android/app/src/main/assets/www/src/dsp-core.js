@@ -524,7 +524,23 @@ function createJsCore() {
 // ------------------------------------------------------------------------- //
 // WASM core (preferred when built + loadable).
 // ------------------------------------------------------------------------- //
+async function emscriptenModuleBuilt() {
+  try {
+    const response = await fetch('/api/wasm', { cache: 'no-store' });
+    if (!response.ok) return false;
+    const status = await response.json();
+    return Boolean(status.emscripten_module);
+  } catch {
+    return false;
+  }
+}
+
 async function createWasmCore() {
+  // Ohne emcc-Build gibt es web/wasm/dsp_core.mjs nicht – ein blinder Import
+  // landet als 404 in der Browser-Konsole. /api/wasm sagt es vorher (200/JSON).
+  if (!(await emscriptenModuleBuilt())) {
+    throw new Error('emscripten dsp module not built (build_wasm.sh needs emcc)');
+  }
   let factory;
   const module = await import('../wasm/dsp_core.mjs');
   factory = module.default || module.KaossDspCore;

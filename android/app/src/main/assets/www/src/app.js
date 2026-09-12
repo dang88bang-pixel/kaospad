@@ -339,6 +339,7 @@ async function loadNativePortForTask(action, event) {
 }
 
 async function runFullChain() {
+  await hydrationPromise;  // Boot-Hydration muss vor dem Reset abgeschlossen sein
   chainStateOutput.value = 'CHAIN: LÄUFT …';
   // Die Referenzkette startet immer aus einem definierten Zustand.
   await dispatchAction('chain.reset');
@@ -1017,8 +1018,10 @@ async function hydrateFromServer() {
     const state = await response.json();
     if (state?.chain?.length) {
       const events = await fetch(`/api/events?since=0`, { cache: 'no-store' }).then((res) => (res.ok ? res.json() : { events: [] }));
-      chainState = defaultState();
-      appliedChainEvents.clear();
+      // Bewusst kein defaultState() hier: Hydration läuft asynchron beim Boot und
+      // würde sonst eine bereits laufende Kette überschreiben (im Browser
+      // beobachtet: 7 statt 23 Schritte). applyChainEvent ergänzt nur, was lokal
+      // fehlt; die Dedup-Menge verhindert Doppelzählung.
       (events.events || []).forEach((event) => { applyChainEvent(event); });
     }
     if (state?.input?.selected) inputSelect.value = state.input.selected;
@@ -1028,8 +1031,7 @@ async function hydrateFromServer() {
   }
 }
 
-hydrateFromServer();
-
+const hydrationPromise = hydrateFromServer();
 // --------------------------------------------------------------------------- //
 // SSE: /api/events/stream pusht Ketten-Events live (Polling bleibt Fallback)
 // --------------------------------------------------------------------------- //

@@ -75,6 +75,10 @@ def wasm_status() -> dict[str, object]:
         "bytes": WASM_MODULE.stat().st_size if built else 0,
         "core": "cpp kaoss_dsp (audio_flinger_hook + dsp_transient_splitter + kaoss_quad_engine)",
         "parity": "browser == native == python mirror",
+        # Emscripten-Modul (web/wasm/dsp_core.mjs) existiert nur mit emcc; der
+        # Browser fragt das ab, statt blind zu importieren und eine 404 zu loggen.
+        "emscripten_module": (WEB_ROOT / "wasm" / "dsp_core.mjs").is_file(),
+        "emscripten_url": "/wasm/dsp_core.mjs",
         "build": manifest,
         "offline": True,
     }
@@ -360,8 +364,16 @@ class OneAppHandler(SimpleHTTPRequestHandler):
     # ------------------------------------------------------------------ #
     def send_wasm_asset(self, path: str) -> None:
         name = Path(path).name
+        # dist/wasm/ hält das ABI-Modul aus `make wasm`; web/wasm/ das
+        # Emscripten-Modul (dsp_core.mjs/.wasm). Beide liegen unter /wasm/.
+        web_wasm_dir = (WEB_ROOT / "wasm").resolve()
         target = WASM_DIR / name
-        if not target.is_file() or target.parent.resolve() != WASM_DIR.resolve():
+        if not target.is_file():
+            candidate = web_wasm_dir / name
+            if candidate.is_file() and candidate.parent.resolve() == web_wasm_dir:
+                target = candidate
+        allowed = {WASM_DIR.resolve(), web_wasm_dir}
+        if not target.is_file() or target.parent.resolve() not in allowed:
             self.send_json({"ok": False, "error": f"wasm asset not built: {name}", "hint": "make wasm"}, code=404)
             return
         body = target.read_bytes()

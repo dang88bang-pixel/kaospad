@@ -124,7 +124,8 @@ def classify(path: Path, root: Path, all_text: dict[Path, str]) -> dict[str, obj
     body_markers: set[str] = set()
     for lineno, line in enumerate(text.splitlines(), start=1):
         match = MARKER_RE.search(line)
-        prose = PROSE_MARKER_RE.search(line) if not match else None
+        # Das Audit-Skript enthält die Suchbegriffe selbst – nicht mitzählen.
+        prose = None if path.name == SELF else (PROSE_MARKER_RE.search(line) if not match else None)
         if not match and not prose:
             continue
         kind = (match.group(1) if match else prose.group(1)).upper()
