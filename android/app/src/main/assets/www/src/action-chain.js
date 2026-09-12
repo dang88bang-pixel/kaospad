@@ -125,7 +125,7 @@ export function isActionReady(state, action) {
  * Client-State. Enthält die gleiche Kettenlogik wie der Server, damit die UI
  * auch ohne Backend (file://-Preview) korrekt reagiert.
  */
-export { isKaossState };
+export { isKaossState, usableDetail };
 
 export function chainReducer(state, event) {
   const next = state;
@@ -221,7 +221,10 @@ export function chainReducer(state, event) {
         if (detail.looper) next.kaoss = applyKaoss(next.kaoss, detail.looper);
         break;
       case 'transcribe':
-        if (typeof detail.transcript === 'string') {
+        // Transkript kommt als String (SSE-Summary-Pfad) oder als Objekt
+        // { text, language, offline } (Server/Offline-Dispatcher) – beides gilt,
+        // nur "<N items>"-Platzhalter nicht.
+        if (usableDetail(detail.transcript)) {
           next.lyrics.transcripts = [...next.lyrics.transcripts, detail.transcript].slice(-32);
         }
         if (detail.rhymes && typeof detail.rhymes === 'object' && !Array.isArray(detail.rhymes)) {
@@ -257,6 +260,13 @@ function pick(source, keys) {
 
 function isKaossState(value) {
   return Boolean(value) && typeof value === 'object' && Array.isArray(value.modules);
+}
+
+// Zusammenfassungs-Platzhalter aus SSE-Payloads ("<4 items>") sind keine Werte.
+function usableDetail(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return !/^<\d+ items?>$/.test(value);
+  return typeof value === 'object';
 }
 
 function applyKaoss(kaoss, detail) {
