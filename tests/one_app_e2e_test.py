@@ -7,13 +7,20 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def get_json(path: str) -> dict:
     with urlopen(path, timeout=1.5) as res:  # noqa: S310 local only
+        return json.loads(res.read().decode("utf-8"))
+
+
+def post_json(path: str, payload: dict) -> dict:
+    body = json.dumps(payload).encode("utf-8")
+    req = Request(path, data=body, headers={"content-type": "application/json"})  # noqa: S310 local only
+    with urlopen(req, timeout=5) as res:
         return json.loads(res.read().decode("utf-8"))
 
 
@@ -57,7 +64,38 @@ def main() -> int:
         assert "SEKTOR" in rhymes["rhymes"]
 
         mesh = get_json("http://127.0.0.1:8090/mesh/default")
-        assert mesh["rig_bones"] == 24
+        # Früher stand hier `assert mesh["rig_bones"] == 24` – eine der erfundenen
+        # Stub-Zahlen aus dem Audit (45000 Triangles / 24 Bones / 1800 ms). Vor
+        # `neurallift.generate` ist der Avatar die ehrliche Fallback-Kapsel:
+        # ohne Rig, aber mit echten, aus den GLB-Bytes gelesenen Kennzahlen.
+        assert mesh["ok"] is True and mesh["inference"] is False
+        assert mesh["rigged"] is False and mesh["rig_bones"] == 0, mesh
+        assert mesh["lod0_tris"] > 0 and mesh["vertices"] > 0, mesh
+        assert mesh["lod1_tris"] == 0 and mesh["fallback"] is True, mesh
+
+        # `neurallift.generate` braucht den Kettenkontext (Milestone `avatar.mode`).
+        chain = post_json("http://127.0.0.1:8090/api/chain/run", {
+            "strict": False,
+            "script": [
+                {"action": "avatar.mode", "mode": "CYPHER_CIRCLE"},
+                {"action": "neurallift.generate", "source": "camera_frame_0001.jpg", "t_ms": 1200.0, "energy": 0.6},
+            ],
+        })
+        run = chain["chain_run"]
+        assert run["blocked"] == [], run["blocked"]
+        detail = next(
+            item["detail"] for item in run["results"] if item["action"] == "neurallift.generate"
+        )
+        assert detail["magic"] == "glTF" and detail["rigged"] is True, detail
+        assert detail["rig_bones"] == 26 and detail["lod0_tris"] == 1248, detail
+        assert detail["vertices"] == 780 and detail["glb_bytes"] > 1000, detail
+        assert len(detail["glb_sha256"]) == 64 and detail["generate_ms"] > 0, detail
+        glb = ROOT / detail["glb_path"]
+        assert glb.is_file() and glb.read_bytes()[:4] == b"glTF", detail["glb_path"]
+
+        mesh_after = get_json("http://127.0.0.1:8090/mesh/default")
+        assert mesh_after["rigged"] is True and mesh_after["rig_bones"] == 26, mesh_after
+        assert mesh_after["lod0_tris"] == detail["lod0_tris"], mesh_after
 
         transient = get_json("http://127.0.0.1:8090/dsp/transient")
         assert transient["kick808"] is True and transient["latency_ms"] <= 1.2

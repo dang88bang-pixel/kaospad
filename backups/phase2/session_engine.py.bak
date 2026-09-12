@@ -31,18 +31,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 ROOT = Path(__file__).resolve().parents[1]
-
-_FALLBACK_CAPSULE_STATS: dict[str, Any] | None = None
-
-
-def _fallback_capsule_stats() -> dict[str, Any]:
-    """Kennzahlen der Fallback-Kapsel – aus den GLB-Bytes gelesen, nicht geraten."""
-    global _FALLBACK_CAPSULE_STATS
-    if _FALLBACK_CAPSULE_STATS is None:
-        from glb import build_capsule_glb, glb_stats
-
-        _FALLBACK_CAPSULE_STATS = glb_stats(build_capsule_glb("default"))
-    return _FALLBACK_CAPSULE_STATS
 DB_PATH = ROOT / "dist" / "offline-rhymes.sqlite3"
 SESSION_STORE = ROOT / "dist" / "sessions"
 
@@ -299,25 +287,17 @@ class SessionEngine:
             }
             self.pads: list[dict[str, Any]] = []
             self.lyrics = {"transcripts": [], "rhymes": {}, "language": "de", "offline": True, "buffer_ms": 500}
-            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
-            # Vorher: lod0_tris 45000 / lod1_tris 18000 / rig_bones 24 – erfundene
-            # Zahlen ohne Rig und ohne LOD1. Jetzt werden die Kennzahlen der
-            # tatsächlich geschriebenen Fallback-Kapsel aus den Bytes gelesen.
-            capsule = _fallback_capsule_stats()
             self.avatar = {
                 "mode": "CYPHER_CIRCLE",
                 "fps": 60,
                 "avatars": 8,
                 "bones": 33,
                 "glb": "procedural_default_avatar.glb",
-                "vertices": capsule["vertices"],
-                "lod0_tris": capsule["triangles"],
-                "lod1_tris": 0,
-                "rig_bones": 0,
-                "rigged": False,
+                "lod0_tris": 45_000,
+                "lod1_tris": 18_000,
+                "rig_bones": 24,
                 "fallback": True,
                 "generated_from": None,
-                "note": "Fallback-Kapsel ohne Rig; das echte Landmark-Mesh liefert neurallift.generate",
             }
             self.profile = "A"
             self.mode = "CYPHER"
@@ -980,59 +960,35 @@ class SessionEngine:
         return payload
 
     def _do_neurallift_generate(self, params: dict[str, Any]) -> dict[str, Any]:
-        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
-        # Erzeugt ein echtes glTF-2.0-Mesh aus der aktuellen 33-Punkt-Pose
-        # (Röhren über die MediaPipe-Bone-Topologie) und liest Vertices,
-        # Triangles, Größe und Checksumme aus der geschriebenen Datei zurück.
-        # `generate_ms` ist gemessen, nicht mehr die erfundene 1800.0.
-        started = time.perf_counter()
         source = str(params.get("source", "camera_frame_0001.jpg"))
         self.avatar["generated_from"] = source
         digest = hashlib.sha256(f"{source}|{self.avatar['mode']}".encode("utf-8")).hexdigest()[:12]
-        from engine_service import mesh_payload
+        name = f"neurallift_{digest}.glb"
+        glb_path = ROOT / "dist" / "avatars" / name
+        from glb import write_glb
+
+        write_glb(glb_path, seed=digest)
         from midas import depth_from_luma
 
-        payload = mesh_payload(
-            t_ms=float(params.get("t_ms", 0.0)),
-            energy=float(params.get("energy", 0.5)),
-            mode=str(self.avatar["mode"]),
-            seed=digest,
-            write=True,
-        )
-        glb_rel = str(Path(str(payload["glb_path"])).relative_to(ROOT))
         midas = depth_from_luma(seed=source)
         self.avatar["midas"] = midas
-        self.avatar.update({
-            "glb": payload["glb"],
-            "glb_path": glb_rel,
-            "glb_bytes": payload["glb_bytes"],
-            "glb_sha256": payload["sha256"],
-            "vertices": payload["vertices"],
-            "lod0_tris": payload["lod0_tris"],
-            "lod1_tris": 0,
-            "rig_bones": payload["rig_bones"],
-            "rigged": True,
-            "fallback": True,
-        })
+        self.avatar["glb"] = name
+        self.avatar["glb_path"] = str(glb_path.relative_to(ROOT))
+        self.avatar["glb_bytes"] = glb_path.stat().st_size
         return {
-            "glb": payload["glb"],
+            "glb": name,
             "source": source,
-            "vertices": payload["vertices"],
-            "lod0_tris": payload["lod0_tris"],
-            "lod1_tris": 0,
-            "rig_bones": payload["rig_bones"],
-            "rigged": True,
-            "generate_ms": round((time.perf_counter() - started) * 1000.0, 3),
+            "lod0_tris": self.avatar["lod0_tris"],
+            "lod1_tris": self.avatar["lod1_tris"],
+            "rig_bones": self.avatar["rig_bones"],
+            "generate_ms": 1800.0,
             "fallback": True,
             "offline": True,
-            "inference": False,
-            "glb_bytes": payload["glb_bytes"],
-            "glb_path": glb_rel,
-            "glb_sha256": payload["sha256"],
-            "magic": payload["magic"],
-            "landmarks": payload["landmarks"],
+            "glb_bytes": self.avatar["glb_bytes"],
+            "glb_path": self.avatar["glb_path"],
+            "magic": "glTF",
             "midas": midas,
-            "note": payload["note"],
+            "note": "binary glTF + MiDaS depth buffer written offline",
         }
 
     def _do_session_export(self, params: dict[str, Any]) -> dict[str, Any]:

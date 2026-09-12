@@ -67,7 +67,16 @@ def main() -> int:
         assert all(item["bind"] == "127.0.0.1" for item in ports["ports"])
 
         mesh = http_json("http://127.0.0.1:8082/mesh/default")
-        assert mesh["rig_bones"] == 24 and mesh["lod0_tris"] == 45000
+        # Früher standen hier die hartcodierten Stub-Werte (rig_bones 24,
+        # lod0_tris 45000) – also genau die Zahlen, die das Audit als Fake
+        # geführt hat. Seit der echten Landmark-Mesh-Erzeugung (Phase 2, P2-2)
+        # gelten messbare Invarianten aus der erzeugten GLB-Datei.
+        assert mesh["ok"] is True and mesh["inference"] is False
+        assert mesh["rig_bones"] == 26, mesh["rig_bones"]
+        assert mesh["lod0_tris"] == mesh["triangles"] > 0, mesh
+        assert mesh["vertices"] > 0 and mesh["glb_bytes"] > 1000
+        assert len(mesh["sha256"]) == 64
+        assert http_json("http://127.0.0.1:8082/mesh/default")["sha256"] == mesh["sha256"]
 
         rhymes = http_json("http://127.0.0.1:8085/rhymes?word=beton")
         assert "SEKTOR" in rhymes["rhymes"]

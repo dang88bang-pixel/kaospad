@@ -36,10 +36,6 @@ from rhyme_matrix import ensure_database, lookup  # noqa: E402
 sys.path.insert(0, str(ROOT / "engines"))
 from device_matrix import status as device_status  # noqa: E402
 from session_engine import ACTION_BY_NAME, FULL_CHAIN_SCRIPT, build_engine  # noqa: E402
-# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
-# Port 8082 nutzt dieselbe Mesh-Erzeugung wie der echte NeuralLift-Daemon.
-sys.path.insert(0, str(ROOT / "engines" / "neurallift_360"))
-from engine_service import mesh_payload  # noqa: E402
 
 HOST = "127.0.0.1"
 DAEMONS = [
@@ -179,18 +175,13 @@ class JsonHandler(SimpleHTTPRequestHandler):
                 })
                 return
         if self.role == "neurallift-engine" and parsed.path == "/mesh/default":
-            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
-            # Port 8082 meldete hier die festen Stub-Zahlen aus ENGINE.avatar
-            # (lod0_tris 45000 / rig_bones 24) – ohne Mesh, ohne Datei. Jetzt wird
-            # dieselbe Funktion wie im echten Engine-Daemon aufgerufen, die ein
-            # GLB aus 33 Pose-Landmarks baut und die Kennzahlen zurückliest.
-            payload = mesh_payload(write=False)
-            payload["lod1_tris"] = 0
-            payload["generated_from"] = ENGINE.avatar["generated_from"]
-            payload["offline"] = True
-            payload["engine"] = "neurallift"
-            payload["transport"] = "unix stream"
-            self.send_json(payload)
+            self.send_json({
+                "glb": ENGINE.avatar["glb"],
+                "lod0_tris": ENGINE.avatar["lod0_tris"],
+                "lod1_tris": ENGINE.avatar["lod1_tris"],
+                "rig_bones": ENGINE.avatar["rig_bones"],
+                "generated_from": ENGINE.avatar["generated_from"],
+            })
             return
         if self.role == "offline-whisper-daemon":
             if parsed.path == "/transcribe":

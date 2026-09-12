@@ -677,14 +677,23 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path in {"/mesh/default", "/api/neurallift/default"}:
+            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
+            # Meldet den echten Avatar-Zustand: vor einem `neurallift.generate`
+            # ist das die Fallback-Kapsel ohne Rig (rig_bones 0, rigged False),
+            # danach die Zahlen des geschriebenen Landmark-Meshes. Die vorher
+            # fest eincompilierten 45000/18000/24 gab es nie.
             self.send_json({
                 "ok": True,
                 "glb": ENGINE.avatar["glb"],
+                "vertices": ENGINE.avatar["vertices"],
                 "lod0_tris": ENGINE.avatar["lod0_tris"],
                 "lod1_tris": ENGINE.avatar["lod1_tris"],
                 "rig_bones": ENGINE.avatar["rig_bones"],
+                "rigged": ENGINE.avatar["rigged"],
                 "generated_from": ENGINE.avatar["generated_from"],
-                "fallback": True,
+                "fallback": ENGINE.avatar["fallback"],
+                "offline": True,
+                "inference": False,
             })
             return
 
