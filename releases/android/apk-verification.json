@@ -1,0 +1,28 @@
+[
+  {
+    "apk": "dist-release/KaossBeatboxStudio-v5.0.0-50000-universal-signed.apk",
+    "checks": 15,
+    "failures": [],
+    "size_bytes": 5570548,
+    "abis": [
+      "arm64-v8a",
+      "armeabi-v7a",
+      "x86_64"
+    ],
+    "v1_jar_files": true,
+    "apk_signing_block_magic": true,
+    "apksigner": {
+      "verifies": true,
+      "v1": false,
+      "v2": true,
+      "v3": true,
+      "v4": false,
+      "signers": 1,
+      "cert_sha256": "a49d5f8abb7167774d2bdc7727b25d8f55e433f8dbb3744adebec3556f47c448",
+      "cert_dn": "CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE"
+    },
+    "cert_sha256": "a49d5f8abb7167774d2bdc7727b25d8f55e433f8dbb3744adebec3556f47c448",
+    "sha256": "895df2bdbb9bbffcd7e69f23214678fc73b546e67b270b33681a64bd72c45c2d",
+    "valid": true
+  }
+]

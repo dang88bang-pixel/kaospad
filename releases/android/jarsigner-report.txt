@@ -1,0 +1,163 @@
+
+sm        56 Thu Jan 01 01:01:02 UTC 1981 META-INF/com/android/build/gradle/app-metadata.properties (and 119 more)
+
+      >>> Signer
+      X.509, CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE
+      Signature algorithm: SHA256withRSA, 2048-bit key
+      [certificate is valid from 9/12/26, 12:23 AM to 9/9/36, 12:23 AM]
+      [Invalid certificate chain: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target]
+
+       11243 Thu Jan 01 01:01:02 UTC 1981 META-INF/KAOSS.SF (and 1 more)
+
+      (Signature related entries)
+
+s      11116 Thu Jan 01 01:01:02 UTC 1981 META-INF/MANIFEST.MF
+
+      >>> Signer
+      X.509, CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE
+      Signature algorithm: SHA256withRSA, 2048-bit key
+      [certificate is valid from 9/12/26, 12:23 AM to 9/9/36, 12:23 AM]
+      [Invalid certificate chain: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target]
+
+
+  s = signature was verified 
+  m = entry is listed in manifest
+  k = at least one certificate was found in keystore
+
+- Signed by "CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE"
+    Digest algorithm: SHA-256
+    Signature algorithm: SHA256withRSA, 2048-bit key
+
+jar verified.
+
+Warning: 
+This jar contains entries whose certificate chain is invalid. Reason: PKIX path building failed: sun.security.provider.certpath.SunCertPathBuilderException: unable to find valid certification path to requested target
+This jar contains entries whose signer certificate is self-signed.
+This jar contains signatures that do not include a timestamp. Without a timestamp, users may not be able to validate this jar after any of the signer certificates expire (as early as 2036-09-09).
+POSIX file permission and/or symlink attributes detected. These attributes are ignored when signing and are not protected by the signature.
+
+This JAR file contains internal inconsistencies that may result in different contents when reading via JarFile and JarInputStream:
+- Manifest is missing when reading via JarInputStream
+- Entry META-INF/com/android/build/gradle/app-metadata.properties is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/version-control-info.textproto is signed in JarFile but is not signed in JarInputStream
+- Entry assets/dexopt/baseline.prof is signed in JarFile but is not signed in JarInputStream
+- Entry assets/dexopt/baseline.profm is signed in JarFile but is not signed in JarInputStream
+- Entry classes.dex is signed in JarFile but is not signed in JarInputStream
+- Entry lib/arm64-v8a/libc++_shared.so is signed in JarFile but is not signed in JarInputStream
+- Entry lib/arm64-v8a/libkaoss_native.so is signed in JarFile but is not signed in JarInputStream
+- Entry lib/armeabi-v7a/libc++_shared.so is signed in JarFile but is not signed in JarInputStream
+- Entry lib/armeabi-v7a/libkaoss_native.so is signed in JarFile but is not signed in JarInputStream
+- Entry lib/x86_64/libc++_shared.so is signed in JarFile but is not signed in JarInputStream
+- Entry lib/x86_64/libkaoss_native.so is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/README.txt is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/index.html is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/manifest.webmanifest is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/package.json is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/src/action-chain.js is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/src/app.js is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/src/audio-engine.js is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/src/dsp-core.js is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/src/styles.css is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/sw.js is signed in JarFile but is not signed in JarInputStream
+- Entry assets/www/wasm/dsp_core_wasm.cpp is signed in JarFile but is not signed in JarInputStream
+- Entry DebugProbesKt.bin is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.annotation_annotation-experimental.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.arch.core_core-runtime.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.core_core-ktx.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.core_core.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.interpolator_interpolator.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.lifecycle_lifecycle-runtime.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.profileinstaller_profileinstaller.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.startup_startup-runtime.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.tracing_tracing.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/androidx.versionedparcelable_versionedparcelable.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/kotlinx_coroutines_android.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/kotlinx_coroutines_core.version is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/services/kotlinx.coroutines.CoroutineExceptionHandler is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/services/kotlinx.coroutines.internal.MainDispatcherFactory is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin-tooling-metadata.json is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/annotation/annotation.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/collections/collections.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/coroutines/coroutines.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/internal/internal.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/kotlin.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/ranges/ranges.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry kotlin/reflect/reflect.kotlin_builtins is signed in JarFile but is not signed in JarInputStream
+- Entry AndroidManifest.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/0Z.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/2K.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/4z.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/5P.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/5c.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/5v.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/6P.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/6d.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/71.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/7V.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/7m.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/8G.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/8t.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/9m.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ac.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ag.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/BT.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/C_.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ck.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/D-.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ec.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ff.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/G2.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/GY.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/LO.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/MD.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ma.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/OM.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/OX.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/OX1.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/Q-.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/S8.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/Tl.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/Tr.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/U-.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/VW.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/W5.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/Ws.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/Y3.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/Y9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/YD.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/_H.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/_y.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/a0.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/aR.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/aU.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/bi.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/c6.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/cV.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/cr.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/df.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/gK.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/gr.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/iQ.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/je.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/kS.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/lR.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/nz.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/o_.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/p8.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/pY.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/pu.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/s4.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/sA.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/td.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/vL.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/w7.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/wN.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/xN.xml is signed in JarFile but is not signed in JarInputStream
+- Entry res/xa.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/z-.9.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/zL.png is signed in JarFile but is not signed in JarInputStream
+- Entry res/zz.png is signed in JarFile but is not signed in JarInputStream
+- Entry resources.arsc is signed in JarFile but is not signed in JarInputStream
+- Entry META-INF/MANIFEST.MF is signed in JarFile but is not signed in JarInputStream
+
+The signer certificate will expire on 2036-09-09.

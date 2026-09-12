@@ -1,0 +1,2 @@
+895df2bdbb9bbffcd7e69f23214678fc73b546e67b270b33681a64bd72c45c2d  KaossBeatboxStudio-v5.0.0-50000-universal-signed.apk
+3203d398f3138ed98809e6c436e2f07b53183805c9d9fa46cd8e3c5131272b9d  KaossBeatboxStudio-v5.0.0-50000-universal.aab

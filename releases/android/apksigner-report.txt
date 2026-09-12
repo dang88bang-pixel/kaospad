@@ -1,0 +1,17 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): true
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE
+Signer #1 certificate SHA-256 digest: a49d5f8abb7167774d2bdc7727b25d8f55e433f8dbb3744adebec3556f47c448
+Signer #1 certificate SHA-1 digest: a973d1a63ca612b48bf88614118a7897b351519b
+Signer #1 certificate MD5 digest: 79948214a21d79f89e87cd29c1f9c46e
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: 92ba4c7a2aeae702dc589074fab59e8b6253fa91b56f335db4b605d898ef614b
+Signer #1 public key SHA-1 digest: 3f4aa306bfcb5dead5bf44a830b897b861899a82
+Signer #1 public key MD5 digest: 055d9f7759edeeaf0575f74e10294111
