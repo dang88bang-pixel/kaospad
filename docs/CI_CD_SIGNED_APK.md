@@ -38,7 +38,8 @@ push / tag / workflow_dispatch / pull_request
         │     zipalign -c -v 4                     (16-KB-Check informationell)
         │     apksigner verify --verbose --print-certs → apksigner-report.txt
         │     apksigner verify --print-certs-pem       → kaoss-ci-cert.pem
-        │     scripts/verify_signed_apk.py --require-v1 --apksigner-report … --json …
+        │     jarsigner -verify (v1-Nachweis, informationell)
+        │     scripts/verify_signed_apk.py --apksigner-report … --json …
         │     scripts/verify_signed_apk.py --selftest  (Guard testet sich selbst)
         ├─ gradle :app:bundleRelease (continue-on-error) + jarsigner -verify → optionales AAB
         ├─ SIGNING.txt + RELEASE-NOTES.md
@@ -124,7 +125,7 @@ adb install -r releases/android/KaossBeatboxStudio-v5.0.0-50000-universal-signed
 
 ```bash
 python3 scripts/verify_signed_apk.py releases/android/*.apk \
-  --require-v1 --apksigner-report releases/android/apksigner-report.txt
+  --apksigner-report releases/android/apksigner-report.txt
 python3 scripts/verify_signed_apk.py --selftest     # Guard-Selftest (4 Szenarien)
 make test-ci-signed-apk                             # kompletter CI/CD-Vertrag
 make verify-signed-apk
@@ -135,8 +136,14 @@ sha256sum -c releases/android/SHA256SUMS.txt
 Der Guard verlangt: `PK`-Magic, binäres AXML-Manifest, `classes.dex`,
 `resources.arsc`, `lib/<abi>/libkaoss_native.so` für alle drei ABIs,
 `libc++_shared.so`, `assets/www/index.html`, Mindestgröße 500 kB,
-v1-JAR-Files, APK-Signing-Block-Magic und einen `apksigner`-Report mit
-`Verifies`, `v2=true`, genau einem Signer samt Zertifikat-SHA-256.
+APK-Signing-Block-Magic und einen `apksigner`-Report mit `Verifies`,
+`v2=true`, genau einem Signer samt Zertifikat-SHA-256.
+
+**v1 (JAR-Signatur):** `apksigner verify` prüft v1 erst ab `minSdk < 24`. Bei
+`minSdk 26` steht dort also `Verified using v1 scheme (JAR signing): false`,
+obwohl AGP `META-INF/<ALIAS>.SF`/`.RSA` schreibt. Der v1-Nachweis läuft deshalb
+über `jarsigner -verify` (informationell, weil Android 8+ v2/v3 genügt);
+`--require-v1` ist nur für APKs mit `minSdk < 24` sinnvoll.
 
 **Negativ-Fixture:** `releases/KaossBeatboxStudio-v5.0.0-Universal-Signed.apk`
 ist der offline handgebaute Stub ohne `lib/*.so`. Er muss bleiben, wie er ist –
@@ -152,6 +159,7 @@ Die echte APK lebt deshalb ausschließlich in `releases/android/`.
 | `app-release-unsigned.apk` | `KAOSS_KEYSTORE_FILE`/`android/keystore.properties` fehlten. Gradle loggt dann `WARN: kein Keystore gefunden …` |
 | `Keystore nicht gefunden: …` | Secret-Base64 war mehrzeilig/kaputt. Neu: `base64 -w0` (eine Zeile), `--print-base64` nutzen |
 | `apksigner` meldet `DOES NOT VERIFY` | Signierschritt prüfen; APK nie nach dem Signieren mit `zipalign` neu ausrichten (Reihenfolge: align → sign) |
+| Guard: `v1 JAR-Signatur gefordert, aber v1=False` | erwartbar bei `minSdk ≥ 26`: `apksigner verify` überspringt die v1-Prüfung. Kein `--require-v1` verwenden, v1 per `jarsigner -verify` nachweisen |
 | Repo-Commit-Push scheitert | Branch hat sich bewegt; der Schritt rebased und versucht es 3×. Sonst Job neu laufen lassen |
 | Cache-Miss nach Tagen | erwartbar, dann `ephemeral-ci`; Secrets beseitigen das dauerhaft |
 | 16-KB-Alignment-Warnung | informationell (Android 15+); NDK `r27`+ und AGP 8.5.1+ nötig, um sie zu erfüllen |

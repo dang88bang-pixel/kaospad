@@ -86,7 +86,7 @@ test-ci-signed-apk:
 # Verifiziert die von CI committete APK in releases/android/ (Struktur + apksigner-Report).
 verify-signed-apk:
 	@ls releases/android/*.apk >/dev/null 2>&1 || { echo 'noch keine CI-APK in releases/android/ - Workflow android-signed-apk.yml muss einmal laufen'; exit 1; }
-	python3 scripts/verify_signed_apk.py releases/android/*.apk --require-v1 --apksigner-report releases/android/apksigner-report.txt
+	python3 scripts/verify_signed_apk.py releases/android/*.apk --apksigner-report releases/android/apksigner-report.txt
 
 # Persistente Signier-Identitaet als GitHub-Secrets registrieren (braucht gh mit admin:repo).
 signing-secrets:

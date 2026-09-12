@@ -12,8 +12,14 @@ Der Guard trennt zwei Dinge hart:
 
 Usage:
     python3 scripts/verify_signed_apk.py dist-release/App.apk \
-        --apksigner-report dist-release/apksigner-report.txt --require-v1
+        --apksigner-report dist-release/apksigner-report.txt
     python3 scripts/verify_signed_apk.py --selftest
+
+Hinweis zu v1 (JAR-Signatur): ``apksigner verify`` prueft v1 erst, wenn die
+minSdkVersion des APK < 24 ist. Bei minSdk 26 (Android 8.0+) steht dort also
+prinzipbedingt ``Verified using v1 scheme (JAR signing): false``, obwohl AGP
+``META-INF/*.SF``/``*.RSA`` schreibt. Der v1-Nachweis laeuft deshalb ueber
+``jarsigner -verify``; ``--require-v1`` ist nur fuer APKs mit minSdk < 24 gedacht.
 """
 from __future__ import annotations
 
@@ -41,6 +47,10 @@ def ok(message: str) -> None:
     global _checks
     _checks += 1
     print(f"  ok: {message}")
+
+
+def info(message: str) -> None:
+    print(f"  info: {message}")
 
 
 def fail(message: str) -> None:
@@ -185,10 +195,15 @@ def verify_apk(
                 fail(f"APK Signature Scheme v2 nicht verifiziert (v2={report.get('v2')})")
             else:
                 ok("APK Signature Scheme v2 verifiziert")
-            if require_v1 and report.get("v1") is not True:
-                fail(f"v1 JAR-Signatur gefordert, aber v1={report.get('v1')}")
-            elif report.get("v1") is True:
+            if report.get("v1") is True:
                 ok("v1 JAR-Signatur verifiziert")
+            elif require_v1:
+                fail(f"v1 JAR-Signatur gefordert, aber v1={report.get('v1')}")
+            else:
+                info(
+                    "v1 (JAR) von apksigner nicht geprueft - ab minSdk 24 ueberspringt "
+                    "apksigner die v1-Pruefung; Nachweis via jarsigner -verify"
+                )
             if report.get("v3") is True:
                 ok("APK Signature Scheme v3 verifiziert")
             signers = report.get("signers")

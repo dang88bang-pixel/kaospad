@@ -238,13 +238,14 @@ Tag pushes matching `v*.*.*` run `.github/workflows/multiplatform-ci-cd.yml`, co
 
 `.github/workflows/android-signed-apk.yml` baut bei jedem Push auf `main`/`arena/*`,
 bei Tags `v*.*.*` und manuell per `workflow_dispatch` eine **echte** Release-APK
-(Gradle 8.7 + AGP + NDK/CMake in der Cloud), signiert sie explizit mit
-`apksigner` (**v1 + v2 + v3**), verifiziert sie (`scripts/verify_signed_apk.py`,
+(Gradle 8.7 + AGP + NDK/CMake in der Cloud), richtet sie mit `zipalign -p 4` aus,
+signiert sie mit `apksigner` (**v2 + v3 verifiziert**, v1-JAR mitgeschrieben) und
+verifiziert sie (`scripts/verify_signed_apk.py`,
 `zipalign`, `apksigner verify --print-certs`) und stellt sie dreifach bereit:
 
 | Ort | Was |
 | --- | --- |
-| GitHub Release `apk-latest` (bzw. Tag `v*.*.*`) | APK, `SHA256SUMS.txt`, `SIGNING.txt`, `kaoss-ci-cert.pem`, `apksigner-report.txt`, optional AAB |
+| GitHub Release `apk-latest` (bzw. Tag `v*.*.*`) | APK, `SHA256SUMS.txt`, `SIGNING.txt`, `kaoss-ci-cert.pem`, `apksigner-report.txt`, `jarsigner-report.txt`, optional AAB |
 | Repo-Tree `releases/android/` | dieselben Dateien, von CI committet (genau eine APK) |
 | Workflow-Artefakt `signed-android-release` | 30 Tage Aufbewahrung |
 

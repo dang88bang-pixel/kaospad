@@ -6,12 +6,13 @@ befüllt (Job `build-sign-publish`, Schritt *Signierte APK ins Repo committen*).
 
 | Datei | Inhalt |
 | --- | --- |
-| `KaossBeatboxStudio-v<version>-<versionCode>-universal-signed.apk` | echter Gradle/AGP-Release-Build (ART-`classes.dex`, Native-DSP `lib/<abi>/libkaoss_native.so`, PWA unter `assets/www/`), signiert mit apksigner v1 + v2 + v3 |
+| `KaossBeatboxStudio-v<version>-<versionCode>-universal-signed.apk` | echter Gradle/AGP-Release-Build (ART-`classes.dex`, Native-DSP `lib/<abi>/libkaoss_native.so`, PWA unter `assets/www/`), `zipalign -p 4` + apksigner-Signatur (v2 + v3 verifiziert, v1-JAR mitgeschrieben) |
 | `SHA256SUMS.txt` | `sha256sum -c SHA256SUMS.txt` |
 | `SIGNING.txt` | Signier-Nachweis: Identität, Zertifikat-DN, Zertifikat-SHA-256, Schemata, Commit, Run-Link |
 | `apksigner-report.txt` | Originalausgabe von `apksigner verify --verbose --print-certs` |
 | `kaoss-ci-cert.pem` | öffentliches Signierzertifikat (PEM) – kein Private Key |
 | `apk-verification.json` | maschinenlesbares Guard-Ergebnis (`scripts/verify_signed_apk.py`) |
+| `jarsigner-report.txt` | v1-JAR-Nachweis (`jarsigner -verify`), da `apksigner` v1 ab minSdk 24 nicht prüft |
 
 Es bleibt bewusst **genau eine** APK im Tree: jeder Build ersetzt die vorherige,
 die Historie liegt im Release (`apk-latest` bzw. Tag `v*.*.*`) und in Git.
@@ -35,7 +36,7 @@ Sideload ohne `adb`: APK aufs Gerät kopieren, „unbekannte Quellen“ erlauben
 ```bash
 sha256sum -c releases/android/SHA256SUMS.txt
 python3 scripts/verify_signed_apk.py releases/android/*.apk \
-  --require-v1 --apksigner-report releases/android/apksigner-report.txt
+  --apksigner-report releases/android/apksigner-report.txt
 make test-ci-signed-apk          # kompletter CI/CD-Vertrag
 ```
 

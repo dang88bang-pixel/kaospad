@@ -115,6 +115,8 @@ def main() -> int:
         ("guard-skript", "scripts/verify_signed_apk.py"),
         ("guard-selftest", "verify_signed_apk.py --selftest"),
         ("zipalign-check", "${ZIPALIGN}\" -c"),
+        ("zipalign vor signatur", "${ZIPALIGN}\" -f -p 4"),
+        ("jarsigner v1-nachweis", "jarsigner -verify"),
         ("secret keystore", "secrets.KAOSS_KEYSTORE_BASE64"),
         ("secret alias", "secrets.KAOSS_KEY_ALIAS"),
         ("fallback keytool", "keytool -genkeypair"),
@@ -215,10 +217,11 @@ def main() -> int:
         check("genau eine apk im repo-tree", len(apks) == 1, str([a.name for a in apks]))
         report = REPO_APK_DIR / "apksigner-report.txt"
         if report.is_file():
+            # Kein --require-v1: minSdk 26 -> apksigner ueberspringt die v1-Pruefung.
             result = subprocess.run(
                 [
                     sys.executable, str(GUARD), str(apks[0]),
-                    "--require-v1", "--apksigner-report", str(report),
+                    "--apksigner-report", str(report),
                 ],
                 cwd=ROOT, capture_output=True, text=True, timeout=180,
             )

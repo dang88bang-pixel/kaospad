@@ -298,16 +298,27 @@ jobs:
           "${APKSIGNER}" verify --verbose --print-certs "${APK}" 2>&1 \
             | tee dist-release/apksigner-report.txt | tee -a "${VERIFY_LOG}"
 
+          log "=== [3b/6] jarsigner -verify (v1-JAR-Nachweis; apksigner prueft v1 erst ab minSdk<24) ==="
+          if jarsigner -verify -verbose:summary -certs "${APK}" > dist-release/jarsigner-report.txt 2>&1; then
+            head -3 dist-release/jarsigner-report.txt | tee -a "${VERIFY_LOG}"
+            log "v1 JAR-Signatur von jarsigner bestaetigt"
+          else
+            log "v1 JAR-Signatur von jarsigner NICHT bestaetigt (bei minSdk 26 nicht erforderlich)"
+            head -5 dist-release/jarsigner-report.txt | tee -a "${VERIFY_LOG}" || true
+            echo "::warning::v1-JAR-Signatur nicht bestaetigt - fuer minSdk 26 reichen v2/v3"
+          fi
+
           log "=== [4/6] Signierzertifikat als PEM exportieren ==="
           "${APKSIGNER}" verify --print-certs-pem "${APK}" > dist-release/kaoss-ci-cert.pem 2>>"${VERIFY_LOG}"
           grep -q "BEGIN CERTIFICATE" dist-release/kaoss-ci-cert.pem
           log "PEM-Zertifikat geschrieben ($(wc -l < dist-release/kaoss-ci-cert.pem) Zeilen)"
 
           log "=== [5/6] Guard scripts/verify_signed_apk.py ==="
+          # Kein --require-v1: minSdk 26 -> Android verlangt v2/v3; apksigner verify
+          # berichtet v1 ab minSdk 24 prinzipbedingt als "false" (Pruefung uebersprungen).
           python3 scripts/verify_signed_apk.py "${APK}" \
             --abis armeabi-v7a,arm64-v8a,x86_64 \
             --min-size 500000 \
-            --require-v1 \
             --apksigner-report dist-release/apksigner-report.txt \
             --json dist-release/apk-verification.json 2>&1 | tee -a "${VERIFY_LOG}"
 
@@ -442,6 +453,7 @@ jobs:
             dist-release/kaoss-ci-cert.pem
             dist-release/apksigner-report.txt
             dist-release/apk-verification.json
+            dist-release/jarsigner-report.txt
             dist-release/verify.log
           if-no-files-found: error
           retention-days: 30
@@ -469,6 +481,7 @@ jobs:
             "dist-release/apksigner-report.txt"
             "dist-release/apk-verification.json"
           )
+          [ -s dist-release/jarsigner-report.txt ] && ASSETS+=("dist-release/jarsigner-report.txt")
           for extra in dist-release/*.aab; do
             [ -e "${extra}" ] && ASSETS+=("${extra}")
           done
@@ -507,6 +520,7 @@ jobs:
           cp -f dist-release/SHA256SUMS.txt dist-release/SIGNING.txt \
                 dist-release/kaoss-ci-cert.pem dist-release/apksigner-report.txt \
                 dist-release/apk-verification.json releases/android/
+          [ -s dist-release/jarsigner-report.txt ] && cp -f dist-release/jarsigner-report.txt releases/android/
           git add releases/android
           git status --short
           if git diff --cached --quiet; then
@@ -588,6 +602,16 @@ jobs:
             echo "::error title=CI-Diagnose::kein Log in dist-release/ gefunden"
             echo "" >> "${REPORT}"
             echo "keine Logs in dist-release/ gefunden" >> "${REPORT}"
+          fi
+          if [ -s dist-release/verify.log ]; then
+            {
+              echo ""
+              echo "#### dist-release/verify.log (vollstaendig)"
+              echo ""
+              echo '```'
+              tr -d '\r' < dist-release/verify.log | head -250
+              echo '```'
+            } >> "${REPORT}"
           fi
           cat "${REPORT}" >> "${GITHUB_STEP_SUMMARY}" 2>/dev/null || true
           # Fallback-Kanal: Commit-Kommentar (per gh api lesbar/loeschbar)
