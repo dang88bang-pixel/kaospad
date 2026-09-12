@@ -40,8 +40,12 @@ jobs:
             android/app/src/main/cpp/kaoss_quad_engine.cpp \
             android/app/src/main/cpp/kaoss_dsp_abi.cpp \
             -o build/dsp_parity_native
+      - name: Zweite WASM-Laufzeit (wasmtime) fuer Cross-Runtime-Paritaet
+        run: python3 -m pip install wasmtime
       - name: Run 4-way DSP parity (wasm/native/python/browser-js)
         run: node tests/dsp_wasm_parity_test.mjs
+      - name: Cross-Runtime-Paritaet (wasmtime == Node/V8 == Python)
+        run: make test-wasm-cross-runtime
       - uses: actions/upload-artifact@v4
         with:
           name: kaoss-dsp-wasm
@@ -62,8 +66,6 @@ jobs:
       # KPCM-PCM-Codec gegen die Referenz kreuzdecodiert wird (tests/flatbuffers_pcm_test.py).
       - name: FlatBuffers reference toolchain (flatc + runtime)
         run: python -m pip install --upgrade pip flatbuffers flatc
-      - name: Zweite WASM-Laufzeit (wasmtime) fuer Cross-Runtime-Paritaet
-        run: python -m pip install wasmtime
       - name: Web/UI contract + DOM-stub harness
         run: |
           make test-web-contract
@@ -86,7 +88,6 @@ jobs:
           make test-failure-simulation
           make test-dex-builder
           make test-real-asr
-          make test-wasm-cross-runtime
       - name: Live audio capture blocks (Mic/USB-UAC2/BLE-IPC)
         run: make test-live-capture
       - name: Session store persistence + .cypher replay
