@@ -21,7 +21,7 @@ build:
 wasm:
 	./scripts/build_wasm.sh
 
-test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui-list test-ui test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
+test: test-native-dsp-latency test-resilience test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui-list test-ui test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
@@ -37,6 +37,9 @@ test-release-guard:
 
 test-gradle-wrapper:
 	python3 scripts/verify_gradle_wrapper.py
+
+test-resilience:
+	python3 tests/resilience_test.py
 
 test-offline-daemons:
 	python3 tests/offline_ipc_socket_test.py

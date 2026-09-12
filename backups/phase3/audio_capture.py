@@ -38,19 +38,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
-import sys
-
-if str(Path(__file__).resolve().parent) not in sys.path:
-    sys.path.insert(0, str(Path(__file__).resolve().parent))
-
-# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
-# Retry + Circuit Breaker an der Audio-Hardware-Grenze.
-from resilience import REGISTRY, RetryPolicy  # noqa: E402
-
-OPEN_BREAKER_PREFIX = "capture:open:"
-READ_BREAKER_PREFIX = "capture:read:"
-OPEN_POLICY = RetryPolicy(attempts=2, base_delay_s=0.02, factor=2.0, max_delay_s=0.1, jitter=0.25)
-
 ROOT = Path(__file__).resolve().parents[1]
 SOCKET_DIR = ROOT / "dist" / "sockets"
 CAPTURE_DIR = ROOT / "dist" / "captures"
@@ -526,10 +513,6 @@ class CaptureRouter:
         self.last: dict[str, object] | None = None
         self.error = ""
         self.file_path: Path | None = None
-        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3): Protokoll der
-        # geschützten Backend-Zugriffe (Breaker-Zustände, Versuche, Fehler).
-        self.resilience: list[dict[str, object]] = []
-        self.read_failures = 0
 
     # ------------------------------------------------------------------ #
     def probe(self) -> dict[str, object]:
@@ -585,56 +568,19 @@ class CaptureRouter:
 
             order = [self.mode] if self.mode not in {"auto"} else list(ROUTE_BACKENDS.get(self.route, ()))
             attempts: list[dict[str, object]] = []
-            self.resilience = []
             for name in order:
                 candidate = self._make(name)
                 if candidate is None:
                     attempts.append({"backend": name, "opened": False, "reason": "unknown backend"})
                     continue
-                # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
-                # Backend-Öffnung läuft hinter Retry + Circuit Breaker: Ein
-                # abgezogenes USB-Interface soll nicht bei jedem Frame erneut
-                # angesprochen werden, sondern nach fünf Sekunden neu probiert.
-                breaker = REGISTRY.get(OPEN_BREAKER_PREFIX + name, failure_threshold=2, reset_timeout_s=5.0)
-                if not breaker.allow():
-                    reasons = breaker.stats()["last_error"] or "circuit open"
-                    attempts.append({"backend": name, "opened": False, "reason": f"circuit open: {reasons}"})
-                    self.resilience.append({"backend": name, "state": breaker.state, "skipped": True})
-                    continue
-                record = breaker.call(
-                    lambda candidate=candidate: candidate.open(self.sample_rate_hz, device=device),
-                    OPEN_POLICY,
-                )
-                if record.ok:
-                    self.info = dict(record.value)  # type: ignore[arg-type]
+                try:
+                    self.info = candidate.open(self.sample_rate_hz, device=device)  # type: ignore[attr-defined]
                     self.backend = candidate
-                    self.info.update({
-                        "opened": True,
-                        "route": self.route,
-                        "mode": self.mode,
-                        "attempts": attempts,
-                        "resilience": {
-                            "backend": name,
-                            "tries": record.tries,
-                            "breaker": breaker.name,
-                            "breaker_state": breaker.state,
-                            "attempts": record.attempts,
-                        },
-                    })
+                    self.info.update({"opened": True, "route": self.route, "mode": self.mode, "attempts": attempts})
                     return dict(self.info)
-                self.error = f"{name}: {record.error}"
-                attempts.append({
-                    "backend": name,
-                    "opened": False,
-                    "reason": record.error,
-                    "tries": record.tries,
-                })
-                self.resilience.append({
-                    "backend": name,
-                    "state": breaker.state,
-                    "tries": record.tries,
-                    "error": record.error,
-                })
+                except Exception as exc:  # noqa: BLE001 - Hardware darf nicht crashen
+                    self.error = f"{name}: {exc}"
+                    attempts.append({"backend": name, "opened": False, "reason": str(exc)})
             self.backend = None
             self.info = {
                 "opened": False,
@@ -651,27 +597,9 @@ class CaptureRouter:
         with self.lock:
             if self.backend is None:
                 return None
-            name = str(self.info.get("backend", "backend"))
-            breaker = REGISTRY.get(READ_BREAKER_PREFIX + name, failure_threshold=5, reset_timeout_s=5.0)
-            if not breaker.allow():
-                # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
-                # Toter Capture-Backend: keine weitere Blockade der DSP-Kette.
-                self.error = f"{name}: circuit open ({breaker.stats()['last_error']})"
-                return None
-            try:
-                block = self.backend.read_block(  # type: ignore[attr-defined]
-                    int(frames or self.frames_per_buffer), timeout_s=timeout_s
-                )
-            except Exception as exc:  # noqa: BLE001 - Audio-Callback darf nicht crashen
-                breaker.record_failure(f"{type(exc).__name__}: {exc}")
-                self.read_failures += 1
-                self.error = f"{name}: {type(exc).__name__}: {exc}"
-                return None
+            block = self.backend.read_block(int(frames or self.frames_per_buffer), timeout_s=timeout_s)  # type: ignore[attr-defined]
             if block is None:
-                # "Noch keine Daten" ist kein Fehler – der Breaker bleibt zu.
                 return None
-            breaker.record_success()
-            self.read_failures = 0
             self.blocks += 1
             self.frames += block.frames
             self.last = block.provenance()
@@ -696,18 +624,6 @@ class CaptureRouter:
                 "last_block": self.last,
                 "reason": self.info.get("reason", ""),
                 "offline": True,
-                # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3): sichtbare
-                # Resilienz – wer wurde wie oft versucht, welcher Breaker ist offen.
-                "resilience": {
-                    "guarded_by": "engines/resilience.py",
-                    "read_failures": self.read_failures,
-                    "backends": list(self.resilience),
-                    "breakers": [
-                        row
-                        for row in REGISTRY.snapshot()
-                        if row["name"].startswith((OPEN_BREAKER_PREFIX, READ_BREAKER_PREFIX))
-                    ],
-                },
             }
 
     def close(self) -> None:

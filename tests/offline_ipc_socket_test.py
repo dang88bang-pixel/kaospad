@@ -66,6 +66,14 @@ def main() -> int:
         assert [item["port"] for item in ports["ports"]] == [8080, 8081, 8082, 8083, 8084, 8085]
         assert all(item["bind"] == "127.0.0.1" for item in ports["ports"])
 
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+        # Retry-/Circuit-Breaker-Schicht muss über echtes HTTP sichtbar sein.
+        resilience = http_json("http://127.0.0.1:8080/resilience")
+        assert resilience["ok"] is True
+        assert resilience["guarded_by"] == "engines/resilience.py"
+        assert resilience["policy"]["attempts"] >= 2 and resilience["policy"]["deadline_s"] > 0
+        assert isinstance(resilience["breakers"], list)
+
         mesh = http_json("http://127.0.0.1:8082/mesh/default")
         # Früher standen hier die hartcodierten Stub-Werte (rig_bones 24,
         # lod0_tris 45000) – also genau die Zahlen, die das Audit als Fake
