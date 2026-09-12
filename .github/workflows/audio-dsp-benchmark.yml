@@ -81,6 +81,7 @@ jobs:
           make test-bug-report
           make test-flatbuffers-pcm
           make test-dsp-error-handling
+          make test-failure-simulation
       - name: Live audio capture blocks (Mic/USB-UAC2/BLE-IPC)
         run: make test-live-capture
       - name: Session store persistence + .cypher replay

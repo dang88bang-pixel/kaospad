@@ -17,7 +17,7 @@ Werkzeuge (reproduzierbar, keine Einmal-Greps):
 - [x] **Phase 1 — Audit:** 113 Dateien / 19.889 Zeilen inventarisiert. Ergebnis: **1 PLACEHOLDER, 3 STUB, 109 REAL**, 0 TODO/FIXME-Kommentarmarker (klassische `// TODO`-Marker: **null** im Repo), 41 Prosa-Marker in 20 Dateien, 77 Dummy-Rückgaben, 0 `NotImplementedError`, 0 unauflösbare lokale Imports. Artefakte: `docs/audit/INVENTAR.csv` (Zeile pro Datei mit Beleg), `docs/audit/GAP-MATRIX.csv` (462 Forderungen).
 - [x] **Phase 2 — Ersetzung:** **2 Dateien ersetzt** (P2-1 `glb.py`-Docstring, P2-2 `engine_service.py` als echter Mesh-Daemon) — nur die freigegebenen, API-kompatibel, mit `-- REAL-IMPLEMENTATION 2026-09-12` und Original in `backups/phase2/`. Folgekorrektur der davon abhängigen Zahlen in `session_engine.py`, `localhost_ipc_suite.py`, `app.py`. P2-3/P2-4/P2-5 bleiben ⛔ und sind unangetastet.
 - [x] **Phase 3 — Integration & Binding:** IPC, Persistenz und Timeouts waren bereits real; neu sind (a) `engines/resilience.py` — **Retry mit exponentiellem Backoff + Jitter, Circuit Breaker (CLOSED/OPEN/HALF_OPEN), harte Deadline** — verdrahtet an drei realen Grenzen (ALSA-Probe, Capture-Backends, jede `/api/action`), Beleg `resilience verified: 65 checks`; und (b) **FlatBuffers für die PCM-Pfade** — Schema `proto/kaoss_pcm.fbs`, abhängigkeitfreier Codec `engines/kpcm_flatbuffers.py`, Rahmen `b"KPCF"` auf der Unix-Pipe und auf TCP 8081, Beleg `flatbuffers pcm verified: 60 checks` (inkl. Kreuzdecodierung gegen den offiziellen `flatc`-Codec in beide Richtungen); und (c) **Error-Handling an den restlichen Grenzen** — `dsp_chain.process_block()` meldet kaputte Abtastrate/Samples als vollständigen Report mit `ok=false`, `event_stream.py` verwirft fehlerhafte Events und zählt sie, Beleg `dsp/event error handling verified: 30 checks`.
-- [x] **Phase 4 — Funktionstest:** `make test` **exit 0** lokal, **28 Ergebniszeilen** (7 neue Suiten: resilience, watchdog, log-rotation, bug-report, engine-service, flatbuffers-pcm, dsp-error-handling). CI-Run `34713717145`: **4/4 Jobs grün**, Playwright **7 von 7 Specs** im echten Chromium.
+- [x] **Phase 4 — Funktionstest:** `make test` **exit 0** lokal, **29 Ergebniszeilen** (8 neue Suiten: resilience, watchdog, log-rotation, bug-report, engine-service, flatbuffers-pcm, dsp-error-handling, failure-simulation). CI-Run `34713717145`: **4/4 Jobs grün**, Playwright **7 von 7 Specs** im echten Chromium.
 - [x] **Phase 5 — Fehlerresistenz:** alle drei Bausteine gebaut, jeder mit eigenem Test — **Watchdog** (`watchdog verified: 28 checks`, Neustart bei ≥ 5 s Stille, Restart-Limit → `degraded`), **Log-Rotation** (`log rotation verified: 25 checks`, harte Grenze `max_bytes × (backups+1)`), **Bug-Report-File** (`bug report verified: 42 checks`, Secret-Redaktion + deutsche Meldung ohne Stack). Graceful Degradation zusätzlich belegt (2 Pfade).
 
 ---
@@ -94,7 +94,7 @@ Nicht-Loopback-Bind wird verweigert.
 
 ## Phase 4 — Funktionstest
 
-`make test` → **exit 0** (letzter lokaler Lauf, 28 Ergebniszeilen). Auszug:
+`make test` → **exit 0** (letzter lokaler Lauf, 29 Ergebniszeilen). Auszug:
 
 ```text
 Limiter peak=-3.2 dBFS threshold=-3.2 dBFS · Transient kind=1 freq=52 latency_ms=1
@@ -105,6 +105,7 @@ log rotation verified: 25 checks // Grenze max_bytes*(backups+1) // JSON Lines /
 bug report verified: 42 checks // JSON in dist/bug-reports // Secrets redigiert // sys+thread excepthook
 flatbuffers pcm verified: 60 checks // Schema proto/kaoss_pcm.fbs // KPCF-Frame auf echter Pipe // SHA-256-Parität raw==flatbuffers
 dsp/event error handling verified: 30 checks // ok=False statt Exception // Event-Fehler gezählt
+failure simulation verified: 42 checks // netz weg (Breaker öffnet + erholt) // permission denied // usb abgezogen // OOM
 neurallift engine service verified: 33 checks // mesh 780v/1248t // 27080 B // inference=false
 zero-cloud localhost IPC gate passed for ports 8080-8085 (shared action chain)
 kaoss one-app e2e contract passed
@@ -119,6 +120,20 @@ dsp parity ok: 274 checks // cases=7 // implementations=wasm+js+python+native
 signed apk verified · native audio bridge contract verified: 39 checks
 release artifact guard verified: 13 checks · gradle wrapper contract verified: 4 checks
 ```
+
+### Ausfall-Simulationen (gefordert: Netz weg / Permission denied / USB abgezogen / OOM)
+
+`tests/failure_simulation_test.py` (**42 Checks**) löst alle vier Fälle real aus:
+
+| Szenario | Wie ausgelöst | Erwartetes Verhalten (geprüft) |
+|---|---|---|
+| Netz weg | IPC-Suite-Prozess (8080–8085) wird live gekillt, danach Respawn | Client hängt nicht, Breaker öffnet nach 3 Fehlern, verweigert dann ohne neuen Versuch, Halb-offen-Probe nach Respawn erfolgreich → CLOSED. Capture-Pipe ohne Client meldet `real_capture: false` statt „live" |
+| Permission denied | Verzeichnis auf `0o500`, plus Fault-Injection `PermissionError` in der ALSA-Probe | Log- und Bug-Report-Schreiben melden den Fehler ohne Crash; Probe wiederholt (Retry), liefert `ok: true` mit leerer Liste + Grund; `permission.check` bleibt strukturiert |
+| USB abgezogen | `hotplug_snapshot(previous=[...])` + Socket-Datei der UAC2-Pipe gelöscht | Hotplug meldet `removed`, Pipe liefert keinen Block und crasht nicht, USB-Route fällt mit begründeten `attempts` zurück |
+| OOM | injizierter `MemoryError` | wird **nicht** wiederholt (nicht transient), Breaker zählt und öffnet, Bug-Report nennt Typ + Traceback, UI-Meldung: „Zu wenig Arbeitsspeicher…" |
+
+Ehrliche Grenze: Es wird kein echter Speicher erschöpft (in CI unverantwortlich) –
+geprüft ist das definierte Verhalten bei `MemoryError`.
 
 ### Playwright (echter Browser, Chromium in CI)
 
