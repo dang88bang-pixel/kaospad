@@ -941,6 +941,7 @@ async function exportSession() {
     const session = payload.detail?.session || payload.session;
     downloadJson(`kaoss-${preset}-${input}.cypher`, session);
     vaultState.value = `VAULT: EXPORTED ${preset} // ${session?.chain_length ?? 0} CHAIN STEPS`;
+    loadSessionStore();  // frisch persistierte Kette sofort in #session-latest zeigen
     return session;
   } catch {
     downloadJson(`kaoss-${preset}-${input}.cypher`, { format: '.cypher', preset, input, offline: true, limiter_dbfs: -3.2, freezeState, events: chainState.events });

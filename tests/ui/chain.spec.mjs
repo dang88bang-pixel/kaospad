@@ -63,7 +63,10 @@ test('SSE pusht Ketten-Events live in die UI (ohne Polling)', async ({ page }) =
   await expect
     .poll(async () => page.evaluate(() => globalThis.__KAOSS_CHAIN__.streamEvents().length), { timeout: 15_000 })
     .toBeGreaterThan(before);
-  await expect(page.locator('#stream-state')).toContainText('input.select');
+  // Dieser Text kommt ausschließlich vom SSE-`chain`-Listener (nicht vom Polling).
+  await expect(page.locator('#stream-state')).toHaveText(/STREAM: LIVE \/\/ seq \d+ input\.select OK/, {
+    timeout: 15_000,
+  });
 
   // Polling-Fallback bleibt dieselbe Quelle: /api/events kennt dieselbe Seq.
   const api = await page.evaluate(async () => {
@@ -78,9 +81,17 @@ test('Capture-Panel zeigt Backend, Block und ehrliche Provenienz', async ({ page
   await waitForApp(page);
   await page.locator('#input-select').selectOption('bluetooth_client');
   await page.locator('#capture-open').click();
-  await expect(page.locator('#capture-state')).toContainText(/CAPTURE: (IPC_BLE|ALSA|USB_UAC2|NONE)/i, { timeout: 15_000 });
+  // Ohne Hardware/Client sind NONE (geschlossen) bzw. FIXTURE/FILE (geöffnet,
+  // aber nicht live) die korrekten, ehrlichen Werte.
+  await expect(page.locator('#capture-state')).toHaveText(
+    /CAPTURE: (NONE|FIXTURE|FILE|ALSA|USB_UAC2|IPC_BLE|IPC_UAC2|IPC_MIC|CLIENT_PCM) (LIVE|ARMED \(wartet\)|FIXTURE)/,
+    { timeout: 15_000 },
+  );
   await page.locator('#capture-pull').click();
-  await expect(page.locator('#capture-state')).toContainText(/CAPTURE-BLOCK:/, { timeout: 15_000 });
+  await expect(page.locator('#capture-state')).toHaveText(
+    /CAPTURE-BLOCK: ((\w+) (REAL|FILE) \/\/ \d+f @\d+(\.\d+)?Hz peak -?\d+(\.\d+)? dBFS|keiner \(\w+\))/,
+    { timeout: 15_000 },
+  );
 
   const status = await page.evaluate(async () => {
     const response = await fetch('/api/audio/capture', { cache: 'no-store' });
