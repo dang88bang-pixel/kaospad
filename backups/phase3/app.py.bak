@@ -15,7 +15,6 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
-import contextlib
 import os
 import select
 import socket
@@ -127,7 +126,6 @@ ENDPOINT_LIST = [
     "/api/session/export", "/api/session/latest", "/api/session/restore", "/api/session/replay", "/api/sessions",
     "/api/audio/capture", "/api/audio/calibrate", "/api/daemons", "/wasm/kaoss_dsp.wasm",
     "/mesh/default", "/dsp/transient", "/api/logs",
-    "/api/watchdog", "/api/bug-reports",
 ]
 
 ENGINE = build_engine(DB_PATH)
@@ -139,40 +137,6 @@ BRIDGE_ACTIVE_PORT: int | None = None
 DAEMON_REGISTRY_LOCK = threading.Lock()
 DAEMON_RESTARTS: dict[int, int] = {}
 DAEMON_LAST_RESTART_MS: dict[int, float] = {}
-
-# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5)
-# Drei Betriebsbausteine, vorher nicht vorhanden (grep → 0 Treffer):
-# rotierendes Log, Watchdog mit 5-Sekunden-Frist, Bug-Report-Datei.
-import bug_report  # noqa: E402
-from log_rotation import RotatingLog  # noqa: E402
-from watchdog import Watchdog  # noqa: E402
-
-APP_LOG = RotatingLog(ROOT / "dist" / "logs" / "one-app.log", max_bytes=256 * 1024, backups=3)
-BUG_REPORT_DIR = ROOT / "dist" / "bug-reports"
-
-
-def _watchdog_log(line: str) -> None:
-    print(line, flush=True)
-    APP_LOG.warning(line)
-
-
-WATCHDOG = Watchdog("kaoss-one-app-watchdog", timeout_s=5.0, sweep_s=1.0, logger=_watchdog_log)
-
-
-def beat_daemons() -> None:
-    """Lebenszeichen für alle logischen Engine-Rollen (ein Prozess, sechs Rollen)."""
-    for spec in DAEMONS:
-        WATCHDOG.beat(f"daemon:{int(spec['port'])}")
-
-
-def supervised_restart(name: str) -> dict[str, object]:
-    """Watchdog-Callback: logische Rolle neu initialisieren."""
-    try:
-        port = int(str(name).split(":")[-1])
-    except ValueError:
-        return {"ok": False, "error": f"unbekannte Watchdog-Einheit {name}"}
-    APP_LOG.warning("watchdog restart", unit=name, port=port)
-    return restart_daemon(port)
 
 
 def daemon_statuses() -> list[dict[str, object]]:
@@ -304,10 +268,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 
     def log_message(self, fmt: str, *args: object) -> None:
-        line = f"{self.address_string()} {fmt % args}"
-        print(f"[kaoss-one-app] {line}", flush=True)
-        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): rotierendes Log.
-        APP_LOG.info(line, path=self.path, client=self.address_string())
+        print(f"[kaoss-one-app] {self.address_string()} {fmt % args}", flush=True)
 
     def end_headers(self) -> None:
         self.send_header("X-Kaoss-Zero-Cloud", "true")
@@ -316,9 +277,6 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def send_json(self, payload: object, code: int = 200) -> None:
-        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): Jede Antwort zählt
-        # als Lebenszeichen der logischen Engine-Rollen für den Watchdog.
-        beat_daemons()
         body = json_bytes(payload)
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -460,48 +418,6 @@ class OneAppHandler(SimpleHTTPRequestHandler):
     # GET contract (read-only projections of the session state)
     # ------------------------------------------------------------------ #
     def do_GET(self) -> None:  # noqa: N802
-        """Öffentlicher GET-Eingang: Fehler werden Report + JSON-Antwort, nie Traceback-Leck."""
-        try:
-            self.route_get()
-        except Exception as exc:  # noqa: BLE001 - Phase 5: kein Absturz an der HTTP-Grenze
-            self.fail_with_report(exc, "GET")
-
-    def do_POST(self) -> None:  # noqa: N802
-        """Öffentlicher POST-Eingang: dieselbe Absicherung wie GET."""
-        try:
-            self.route_post()
-        except Exception as exc:  # noqa: BLE001
-            self.fail_with_report(exc, "POST")
-
-    def fail_with_report(self, exc: Exception, method: str) -> None:
-        """Schreibt einen Bug-Report und antwortet mit einer verständlichen Meldung."""
-        meta = bug_report.write_bug_report(
-            exc,
-            context={
-                "where": f"{method} {self.path}",
-                "app": "kaoss-one-app",
-                "version": APP_VERSION,
-                "client": self.address_string(),
-                "chain_seq": ENGINE.events[-1]["seq"] if ENGINE.events else 0,
-            },
-            message=f"{method} {self.path} fehlgeschlagen",
-            report_dir=BUG_REPORT_DIR,
-            log=_watchdog_log,
-        )
-        APP_LOG.error(f"{method} {self.path}: {type(exc).__name__}: {exc}", bug_report=meta["id"])
-        try:
-            self.send_json({
-                "ok": False,
-                "error": meta["user_message"],
-                "exception": type(exc).__name__,
-                "bug_report": meta["id"] if meta["ok"] else None,
-                "offline": True,
-                "note": "Lokaler Fehler protokolliert; die App läuft weiter.",
-            }, code=500)
-        except Exception:  # noqa: BLE001 - Verbindung kann schon weg sein
-            pass
-
-    def route_get(self) -> None:
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         path = parsed.path.rstrip("/") or "/"
@@ -823,35 +739,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path in {"/api/logs", "/logs"}:
-            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): Ketten-Log plus
-            # Zustand der rotierenden Log-Datei (Größe, Rotationen, Grenze).
-            self.send_json({
-                "ok": True,
-                "logs": self.chain_logs(),
-                "file_log": APP_LOG.tail(40),
-                "rotation": APP_LOG.status(),
-            })
-            return
-
-        if path in {"/api/watchdog", "/watchdog"}:
-            self.send_json({
-                "ok": True,
-                "mode": "one-app",
-                "restart_action": "POST /api/daemons/restart",
-                **WATCHDOG.status(),
-            })
-            return
-
-        if path in {"/api/bug-reports", "/bug-reports"}:
-            reports = bug_report.list_reports(BUG_REPORT_DIR, limit=20)
-            self.send_json({
-                "ok": True,
-                "dir": str(BUG_REPORT_DIR),
-                "count": len(reports),
-                "reports": reports,
-                "uploaded": False,
-                "note": "Lokale Reports, kein Upload (Zero-Cloud).",
-            })
+            self.send_json({"ok": True, "logs": self.chain_logs()})
             return
 
         if path in {"/api/daemons", "/daemons"}:
@@ -887,7 +775,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
     # ------------------------------------------------------------------ #
     # POST contract: the real action & interaction chain
     # ------------------------------------------------------------------ #
-    def route_post(self) -> None:
+    def do_POST(self) -> None:  # noqa: N802
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = parse_qs(parsed.query)
@@ -1191,40 +1079,9 @@ def main() -> int:
         allow_reuse_address = True
 
     server = KaossServer((args.host, port), OneAppHandler)
-
-    # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5)
-    # Watchdog: jede logische Engine-Rolle wird überwacht und nach 5 s ohne
-    # Lebenszeichen neu initialisiert (maximal 3 Rettungsversuche pro Rolle).
-    for spec in DAEMONS:
-        WATCHDOG.register(
-            f"daemon:{int(spec['port'])}",
-            restart=supervised_restart,
-            detail={"name": str(spec["name"]), "task": str(spec.get("task", ""))},
-        )
-    WATCHDOG.start()
-    hooks = bug_report.install_excepthook(
-        context={"app": "kaoss-one-app", "version": APP_VERSION, "port": port},
-        report_dir=BUG_REPORT_DIR,
-        log=_watchdog_log,
-    )
-    APP_LOG.info("one-app gestartet", port=port, host=args.host, actions=len(ACTION_CATALOGUE))
-
     print(f"Kaoss One App ready: http://{args.host}:{port}/", flush=True)
     print(f"POST actions: {len(POST_ROUTES) + 2} routes // chain catalogue: {len(ACTION_CATALOGUE)} actions", flush=True)
-    print(
-        f"watchdog: {len(DAEMONS)} Rollen // 5 s Frist // log: {APP_LOG.path} "
-        f"({APP_LOG.max_bytes} B x {APP_LOG.backups + 1}) // bug-reports: {BUG_REPORT_DIR}",
-        flush=True,
-    )
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        APP_LOG.warning("one-app gestoppt (KeyboardInterrupt)")
-    finally:
-        WATCHDOG.stop()
-        bug_report.uninstall_excepthook(hooks)
-        with contextlib.suppress(OSError):
-            server.server_close()
+    server.serve_forever()
     return 0
 
 

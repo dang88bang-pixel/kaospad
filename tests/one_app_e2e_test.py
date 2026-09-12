@@ -111,6 +111,26 @@ def main() -> int:
         logs = get_json("http://127.0.0.1:8090/api/logs")
         assert any("DSP limiter" in line for line in logs["logs"])
 
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): Watchdog mit
+        # 5-Sekunden-Frist, rotierendes Log und Bug-Report-Ablage müssen über
+        # echtes HTTP sichtbar sein.
+        watchdog = get_json("http://127.0.0.1:8090/api/watchdog")
+        assert watchdog["ok"] is True and watchdog["running"] is True
+        assert watchdog["timeout_s"] == 5.0, watchdog["timeout_s"]
+        assert len(watchdog["units"]) == 6, watchdog["units"]
+        assert all(unit["state"] in {"healthy", "restarting"} for unit in watchdog["units"]), watchdog["units"]
+
+        rotation = logs["rotation"]
+        assert rotation["ok"] is True and rotation["writes"] > 0
+        assert rotation["bytes"] <= rotation["bounded_by_bytes"], rotation
+        assert rotation["path"].endswith("dist/logs/one-app.log"), rotation["path"]
+        assert isinstance(logs["file_log"], list) and logs["file_log"]
+
+        reports = get_json("http://127.0.0.1:8090/api/bug-reports")
+        assert reports["ok"] is True and reports["uploaded"] is False
+        assert reports["dir"].endswith("dist/bug-reports"), reports["dir"]
+        assert isinstance(reports["reports"], list)
+
         print("kaoss one-app e2e contract passed")
         return 0
     finally:
