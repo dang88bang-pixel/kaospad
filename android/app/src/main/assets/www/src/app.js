@@ -1175,6 +1175,18 @@ const sessionLatest = document.querySelector('#session-latest');
 
 async function loadSessionStore() {
   try {
+    // Leerer Store ist der Normalfall (frische Installation): Der Server
+    // antwortet dort bewusst mit 404, der Browser würde das als Konsolenfehler
+    // melden. Deshalb erst die (immer 200 liefernde) Liste abfragen und
+    // `/api/session/latest` nur holen, wenn wirklich etwas persistiert ist.
+    const list = await fetch('/api/sessions', { cache: 'no-store' });
+    if (list.ok) {
+      const index = await list.json();
+      if (Array.isArray(index.sessions) && index.sessions.length === 0) {
+        if (sessionLatest) sessionLatest.value = 'SESSION: keine persistierte Kette';
+        return { ok: false, error: 'no persisted session', sessions: [] };
+      }
+    }
     const response = await fetch('/api/session/latest', { cache: 'no-store' });
     const payload = await response.json();
     if (!response.ok || !payload.ok) {

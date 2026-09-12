@@ -664,6 +664,46 @@ check('port cards show pid', el('port-grid').innerHTML.includes('pid '), el('por
   check('bt compensation readout', el('bt-comp-output').value === '42 ms', el('bt-comp-output').value);
 }
 
+// --------------------------------------------------------------------------- //
+// Session-Store-Boot: Ein leerer Store ist der Normalfall und darf keinen
+// 404-Abruf (und damit keinen Konsolenfehler im Browser) auslösen.
+// --------------------------------------------------------------------------- //
+{
+  const jsonResponse = (payload, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload,
+  });
+  const requested = [];
+  const original = globalThis.fetch;
+  const makeStub = (sessions) => async (url, options) => {
+    const path = String(url).replace(baseUrl, '');
+    requested.push(`${options?.method || 'GET'} ${path}`);
+    if (path.startsWith('/api/sessions')) return jsonResponse({ ok: true, store: 'dist/sessions', sessions, restored: { ok: false } });
+    if (path.startsWith('/api/session/latest')) {
+      return sessions.length
+        ? jsonResponse({ ok: true, session: { chain_length: 23, preset: 'acid_berlin', input: 'usb_c_audio', checksum: 'a'.repeat(64) } })
+        : jsonResponse({ ok: false, error: 'no persisted session' }, 404);
+    }
+    return jsonResponse({ ok: true });
+  };
+  try {
+    globalThis.fetch = makeStub([]);
+    const empty = await globalThis.__KAOSS_CHAIN__.sessions.latest();
+    check('session store: leerer Store ruft latest nicht ab', !requested.some((item) => item.includes('/api/session/latest')), requested);
+    check('session store: leerer Store zeigt Hinweis', el('session-latest').value.includes('keine persistierte Kette'), el('session-latest').value);
+    check('session store: leerer Store meldet ok=false', empty && empty.ok === false, empty);
+
+    requested.length = 0;
+    globalThis.fetch = makeStub([{ chain_length: 23, preset: 'acid_berlin' }]);
+    await globalThis.__KAOSS_CHAIN__.sessions.latest();
+    check('session store: mit Eintrag wird latest geholt', requested.some((item) => item.includes('/api/session/latest')), requested);
+    check('session store: Label zeigt Schritte', el('session-latest').value.includes('23 Schritte'), el('session-latest').value);
+  } finally {
+    globalThis.fetch = original;
+  }
+}
+
 console.log(JSON.stringify({
   ui_checks: checks.length,
   chain_steps: summary.length,
