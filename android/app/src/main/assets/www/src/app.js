@@ -260,6 +260,18 @@ function flashAction(event) {
 // blocked seq=1). Deshalb Dedup über die Event-Identität.
 const appliedChainEvents = new Set();
 
+// SSE liefert absichtlich nur eine Detail-Zusammenfassung; verschachtelte
+// Sammlungen stehen dort als "<4 items>". Diese Platzhalter werden hier
+// entfernt, damit der Reducer sie nicht für echte Werte hält.
+function scalarDetail(summary) {
+  const detail = {};
+  Object.entries(summary || {}).forEach(([key, value]) => {
+    if (typeof value === 'string' && /^<\d+ items?>$/.test(value)) return;
+    detail[key] = value;
+  });
+  return detail;
+}
+
 function applyChainEvent(event) {
   if (!event) return false;
   const key = `${event.seq ?? "x"}:${event.action ?? ""}:${event.t_ms ?? ""}`;
@@ -1070,7 +1082,7 @@ function connectEventStream(since = chainState.seq || 0) {
     lastStreamEventMs = Date.now();
     // dispatchAction() reduziert dasselbe Event bereits – Dedup verhindert die
     // Doppelzählung, egal welcher Weg zuerst ankommt.
-    if (applyChainEvent({ ...payload, detail: payload.detail_summary || {} })) {
+    if (applyChainEvent({ ...payload, detail: scalarDetail(payload.detail_summary) })) {
       renderChain(payload);
     }
     streamLabel(`STREAM: LIVE // seq ${payload.seq} ${payload.action} ${payload.status}`);

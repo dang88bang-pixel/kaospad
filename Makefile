@@ -81,9 +81,11 @@ test-client-hal:
 test-live-capture:
 	python3 tests/live_capture_dsp_test.py
 
-# SSE /api/events/stream zusätzlich zum Polling
+# SSE /api/events/stream zusätzlich zum Polling (+ Reducer-Hygiene gegen
+# zusammengefasste Details)
 test-sse:
 	python3 tests/sse_events_stream_test.py
+	node tests/sse_reducer_hygiene_test.mjs
 
 # WASM == nativer C++-Build == Python-Spiegel == Browser-JS
 test-wasm-parity: wasm
