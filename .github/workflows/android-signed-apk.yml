@@ -517,10 +517,13 @@ jobs:
           # Genau eine APK im Tree halten (aeltere Builds entfernen).
           find releases/android -maxdepth 1 -name '*.apk' ! -name "${APK_NAME}" -delete
           cp -f "dist-release/${APK_NAME}" releases/android/
-          cp -f dist-release/SHA256SUMS.txt dist-release/SIGNING.txt \
-                dist-release/kaoss-ci-cert.pem dist-release/apksigner-report.txt \
-                dist-release/apk-verification.json releases/android/
+          cp -f dist-release/SIGNING.txt dist-release/kaoss-ci-cert.pem \
+                dist-release/apksigner-report.txt dist-release/apk-verification.json \
+                releases/android/
           [ -s dist-release/jarsigner-report.txt ] && cp -f dist-release/jarsigner-report.txt releases/android/
+          # Checksummen fuer den Repo-Ausschnitt neu bilden: das AAB liegt nur im
+          # Release, `sha256sum -c` in releases/android/ muesste sonst scheitern.
+          (cd releases/android && rm -f SHA256SUMS.txt && sha256sum ./* | sed 's|\./||' > SHA256SUMS.txt)
           git add releases/android
           git status --short
           if git diff --cached --quiet; then
