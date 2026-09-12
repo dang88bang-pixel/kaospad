@@ -80,14 +80,16 @@ Binär-CDNs angewiesen ist, bleibt blockiert.
 | **Test** | `tests/real_asr_test.py` → **59 checks**: Vorverarbeitung exakt (Abtastraster `i·6`, Clipping, 96 kHz → 16 kHz = 2667 Frames), harter Fehlerpfad, echter Dekodierlauf, Regression auf den Standardweg, Zero-Cloud-Prüfung. Ohne pocketsphinx überspringt der echte Lauf ehrlich |
 | **Grenze** | anderes Modell als Whisper: Englisch statt Deutsch, akustisches Freitext-Modell statt Whisper-Multilingual; 29 MB Abhängigkeit nur per `pip`, nicht im Repo |
 
-## 4. Emscripten / `emcc` für `web/wasm/dsp_core.mjs` — ❌ bleibt
+## 4. Emscripten / `emcc` für `web/wasm/dsp_core.mjs` — ⚠️ `emcc` bleibt, zweite Laufzeit eingebaut
 
 | | |
 | --- | --- |
 | **Alternative geprüft** | `emsdk` liegt auf GitHub (✅), lädt seinen Clang aber von `storage.googleapis.com` (❌) → bricht ab |
 | **Ersatz bereits eingebaut** | `ziglang 0.16.0` (PyPI ✅) baut das WASM-ABI-Modul; `make test-wasm-parity` prüft 4-Wege-Parität (Zig-WASM == nativ C++ == Python-Spiegel) |
-| **Neu gefunden** | `wasmtime 48.0.0` via PyPI ✅ — eine WASM-**Laufzeit**; könnte das Zig-Modul zusätzlich unabhängig ausführen, ersetzt aber keinen C++-Compiler |
-| **Empfehlung** | Zig-Pfad behalten; `emcc`-Pfad bleibt als dokumentierte Alternative. Optional: `wasmtime` als zweite unabhängige Laufzeit in den Paritätstest |
+| **Umgesetzt** | `wasmtime 48.0.0` via PyPI ✅ ist jetzt als **zweite, unabhängige WASM-Laufzeit** eingebaut: `engines/wasm_cross_runtime.py` führt dasselbe `dist/wasm/kaoss_dsp.wasm` über dieselben `dist/parity/vectors.bin` aus und liefert dasselbe JSON-Layout wie die übrigen Läufe. CI installiert wasmtime in einem eigenen Schritt |
+| **Test** | `tests/wasm_cross_runtime_test.py` → **177 checks**. Ergebnis: **FNV-1a-Hash über die Float-Bits bitgleich zu Node/V8** (`32e2e43eb9f585d3` in beiden Laufzeiten), max. Abweichung `4.30e-08` zu Node und `4.29e-07` zum Python-Spiegel — beides unter den bestehenden Toleranzen (1e-6 bzw. 1e-5) |
+| **Aussagekraft** | Damit ist belegt, dass das mit Zig gebaute Modul **nicht an V8-Eigenheiten hängt**: zwei vollständig unabhängige Laufzeiten rechnen identisch |
+| **Grenze** | wasmtime ist eine Laufzeit, kein C++-Compiler — `emcc` wird dadurch nicht ersetzt, der zweite Bauweg `web/wasm/dsp_core.mjs` bleibt offen (TECH-DEBT 2) |
 
 ## 5. Lokales Chromium für Playwright — ❌ bleibt
 
@@ -129,12 +131,13 @@ CI als eigener Schritt `FlatBuffers reference toolchain (flatc + runtime)`.
 | 8 | Gradle-Wrapper-Jar | ⛔ | ✅ real (byteidentisch zu upstream, gepinnt) |
 | 7 | echtes DEX in der APK | ⛔ | ✅ real (504 B, von androguard geparst) |
 | 4 | Modell-Gewichte | ⛔ | ✅ echter pocketsphinx-Dekoder eingebaut (opt-in, 59 checks) |
-| 6 | `emcc` | ⛔ | ❌ bleibt (Zig-Pfad deckt WASM ab) |
+| 6 | `emcc` | ⛔ | ⚠️ `emcc` bleibt, aber wasmtime als zweite Laufzeit eingebaut (177 checks, FNV-1a bitgleich) |
 | 2 | lokales Chromium | ⛔ | ❌ bleibt (CI übernimmt) |
 | 5 | AAudio/Oboe + BLE | ⛔ | ❌ bleibt (Gerät fehlt; Quellen wären da) |
 | 3 | JDK / `d8` | ⛔ | ❌ bleibt (durch Punkt 7/2 umgangen) |
 | 1 | `flatc`-Persistenz | ⛔ | ✅ gelöst (PyPI + CI-Schritt) |
 
 **Von 8 Blockern sind 4 real beseitigt bzw. real umgesetzt** (Wrapper-Jar, DEX,
-`flatc`, echter ASR-Dekoder), vier bleiben aus Netz- bzw. Hardwaregründen
-bestehen — jeder mit funktionierendem Workaround und Test.
+`flatc`, echter ASR-Dekoder); ein fünfter (`emcc`) bleibt bestehen, ist aber durch
+eine zweite unabhängige WASM-Laufzeit messbar abgesichert. Drei bleiben aus Netz-
+bzw. Hardwaregründen unverändert — jeder mit funktionierendem Workaround und Test.

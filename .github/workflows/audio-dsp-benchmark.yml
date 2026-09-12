@@ -62,6 +62,8 @@ jobs:
       # KPCM-PCM-Codec gegen die Referenz kreuzdecodiert wird (tests/flatbuffers_pcm_test.py).
       - name: FlatBuffers reference toolchain (flatc + runtime)
         run: python -m pip install --upgrade pip flatbuffers flatc
+      - name: Zweite WASM-Laufzeit (wasmtime) fuer Cross-Runtime-Paritaet
+        run: python -m pip install wasmtime
       - name: Web/UI contract + DOM-stub harness
         run: |
           make test-web-contract
@@ -84,6 +86,7 @@ jobs:
           make test-failure-simulation
           make test-dex-builder
           make test-real-asr
+          make test-wasm-cross-runtime
       - name: Live audio capture blocks (Mic/USB-UAC2/BLE-IPC)
         run: make test-live-capture
       - name: Session store persistence + .cypher replay
