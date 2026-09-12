@@ -215,10 +215,15 @@ def main() -> int:
         for item in FAILED:
             print(f"  - {item}", flush=True)
         return 1
-    mode = ("wasmtime == Node/V8 == Python" if not SKIPPED
-            else "nur Struktur geprüft (Referenz oder Laufzeit fehlt)")
-    print(f"wasm cross-runtime verified: {CHECKS} checks // {mode} // "
-          f"FNV-1a bitgleich über dasselbe Modul", flush=True)
+    if SKIPPED:
+        # Ehrlich: ohne Laufzeit/Referenz wurde *keine* Parität geprüft.
+        print(f"wasm cross-runtime verified: {CHECKS} checks // "
+              f"nur Struktur geprüft // Parität übersprungen (Laufzeit oder "
+              f"Referenz fehlt)", flush=True)
+    else:
+        print(f"wasm cross-runtime verified: {CHECKS} checks // "
+              f"wasmtime == Node/V8 == Python // FNV-1a bitgleich über dasselbe "
+              f"Modul", flush=True)
     return 0
 
 

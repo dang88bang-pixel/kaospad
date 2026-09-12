@@ -45,7 +45,19 @@ jobs:
       - name: Run 4-way DSP parity (wasm/native/python/browser-js)
         run: node tests/dsp_wasm_parity_test.mjs
       - name: Cross-Runtime-Paritaet (wasmtime == Node/V8 == Python)
-        run: make test-wasm-cross-runtime
+        # Selbstbeweisend: die Suite ueberspringt die Paritaet ehrlich (exit 0),
+        # wenn wasmtime oder die Referenzlaeufe fehlen. Ein gruener Schritt allein
+        # waere dann wertlos, also wird hier die Nur-bei-echtem-Lauf-Zeile
+        # ("wasmtime == Node/V8 == Python") hart eingefordert.
+        run: |
+          set -o pipefail
+          make test-wasm-cross-runtime | tee /tmp/cross-runtime.log
+          # Muster muessen an die *Ergebniszeile* gebunden sein: die blosse
+          # Abschnittsueberschrift enthaelt dieselben Worte und wuerde sonst
+          # auch bei einem Skip gruen leuchten.
+          grep -Eq 'wasm cross-runtime verified: [0-9]+ checks // wasmtime == Node/V8 == Python' /tmp/cross-runtime.log
+          grep -q 'FNV-1a bitgleich' /tmp/cross-runtime.log
+          echo "Cross-Runtime-Paritaet wurde wirklich ausgefuehrt (kein Skip)." 
       - uses: actions/upload-artifact@v4
         with:
           name: kaoss-dsp-wasm
