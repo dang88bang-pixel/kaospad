@@ -17,7 +17,7 @@ Werkzeuge (reproduzierbar, keine Einmal-Greps):
 - [x] **Phase 1 — Audit:** 113 Dateien / 19.889 Zeilen inventarisiert. Ergebnis: **1 PLACEHOLDER, 3 STUB, 109 REAL**, 0 TODO/FIXME-Kommentarmarker (klassische `// TODO`-Marker: **null** im Repo), 41 Prosa-Marker in 20 Dateien, 77 Dummy-Rückgaben, 0 `NotImplementedError`, 0 unauflösbare lokale Imports. Artefakte: `docs/audit/INVENTAR.csv` (Zeile pro Datei mit Beleg), `docs/audit/GAP-MATRIX.csv` (462 Forderungen).
 - [x] **Phase 2 — Ersetzung:** **2 Dateien ersetzt** (P2-1 `glb.py`-Docstring, P2-2 `engine_service.py` als echter Mesh-Daemon) — nur die freigegebenen, API-kompatibel, mit `-- REAL-IMPLEMENTATION 2026-09-12` und Original in `backups/phase2/`. Folgekorrektur der davon abhängigen Zahlen in `session_engine.py`, `localhost_ipc_suite.py`, `app.py`. P2-3/P2-4/P2-5 bleiben ⛔ und sind unangetastet.
 - [x] **Phase 3 — Integration & Binding:** IPC, Persistenz und Timeouts waren bereits real; neu ist `engines/resilience.py` — **Retry mit exponentiellem Backoff + Jitter, Circuit Breaker (CLOSED/OPEN/HALF_OPEN), harte Deadline** — verdrahtet an drei realen Grenzen (ALSA-Probe, Capture-Backends, jede `/api/action`). Beleg: `resilience verified: 65 checks`. FlatBuffers für die PCM-Pfade: **noch offen** (TECH-DEBT).
-- [~] **Phase 4 — Funktionstest:** `make test` **exit 0** lokal, jetzt **27 Ergebniszeilen** (5 neue Suiten: resilience, watchdog, log-rotation, bug-report, engine-service). CI: Native DSP, Offline-Kette und WASM-Parität **grün**; Playwright zuletzt **6 von 7 grün** — der letzte Fehler (404-Konsolenmeldung bei leerem Session-Store) ist root-cause-analysiert, behoben und gepusht, die Browser-Nachverifikation läuft in CI.
+- [x] **Phase 4 — Funktionstest:** `make test` **exit 0** lokal, **26 Ergebniszeilen** (5 neue Suiten: resilience, watchdog, log-rotation, bug-report, engine-service). CI-Run `34713717145`: **4/4 Jobs grün**, Playwright **7 von 7 Specs** im echten Chromium.
 - [x] **Phase 5 — Fehlerresistenz:** alle drei Bausteine gebaut, jeder mit eigenem Test — **Watchdog** (`watchdog verified: 28 checks`, Neustart bei ≥ 5 s Stille, Restart-Limit → `degraded`), **Log-Rotation** (`log rotation verified: 25 checks`, harte Grenze `max_bytes × (backups+1)`), **Bug-Report-File** (`bug report verified: 42 checks`, Secret-Redaktion + deutsche Meldung ohne Stack). Graceful Degradation zusätzlich belegt (2 Pfade).
 
 ---
@@ -94,7 +94,7 @@ Nicht-Loopback-Bind wird verweigert.
 
 ## Phase 4 — Funktionstest
 
-`make test` → **exit 0** (letzter lokaler Lauf, 27 Ergebniszeilen). Auszug:
+`make test` → **exit 0** (letzter lokaler Lauf, 26 Ergebniszeilen). Auszug:
 
 ```text
 Limiter peak=-3.2 dBFS threshold=-3.2 dBFS · Transient kind=1 freq=52 latency_ms=1
