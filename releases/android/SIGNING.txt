@@ -11,13 +11,13 @@ ABIs:                armeabi-v7a, arm64-v8a, x86_64
 Signatur-Schemata:   v1(JAR)=false v2=true v3=true
 Zertifikat-DN:       CN=Kaoss Beatbox Studio, OU=CI Release, O=Kaoss, L=Berlin, C=DE
 Zertifikat-SHA-256:  a49d5f8abb7167774d2bdc7727b25d8f55e433f8dbb3744adebec3556f47c448
-Signing-Identitaet:  ephemeral-ci
+Signing-Identitaet:  actions-cache
   repo-secret   = Keystore aus Secret KAOSS_KEYSTORE_BASE64 (persistent, empfohlen)
   actions-cache = persistenter Keystore aus dem Actions-Cache (kaoss-signing-keystore-v1)
   ephemeral-ci  = pro Lauf erzeugter Self-Signed-Key (Signatur wechselt, kein Update ueber Alt-Installation)
-Commit:              d1bc6ae8cb1a8942ff9caa7ec85f9face0ea708e
+Commit:              85990c78fd5b067e76b7182e92907cae4bfb62e4
 Ref:                 refs/heads/arena/01a092bc-kaospad
-Run:                 https://github.com/dang88bang-pixel/kaospad/actions/runs/34661392730
+Run:                 https://github.com/dang88bang-pixel/kaospad/actions/runs/34661671942
 
 --- apksigner verify --verbose --print-certs ---
 Verifies
