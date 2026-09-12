@@ -270,7 +270,7 @@ SSE-Live-Events, Capture-Panel, Session-Store/Replay, echtes XY-Pad-Pointer-Even
 und der `BLOCKED`-Guard. Der DOM-Stub-Harness (`make test-web-ui-chain`) bleibt
 als schnelle, browserunabhängige Stufe erhalten.
 
-### Ketten-Replay aus `.cypher`
+### 6. Ketten-Replay aus `.cypher`
 
 Jedes Event speichert jetzt seine Parameter (ohne PCM-Blobs), damit Replay die
 *tatsächliche* Interaktion wiederholt und nicht nur Aktionsnamen:

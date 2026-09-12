@@ -14,15 +14,14 @@
 | Session store | RAM only | `.cypher.json` persist + **params-treues Replay** + `dist/sessions/`-Inventar + Restore über `/api/session/restore` |
 | Events | poll only | SSE `/api/events/stream` (Push, `Last-Event-ID`, Heartbeat) aus demselben Hub wie `/api/events` |
 | UI-Tests | DOM-Stub-Harness | DOM-Stub **plus** Playwright/Chromium (`tests/ui/chain.spec.mjs`, 7 Specs) |
-| Android JNI | missing | live JNI + WebView shell |
-| USB/BT hardware pairing | OS APIs | still needs a device — probe/status live, pairing blocked |
-| TFLite Whisper / MiDaS weights | missing | blocked without licensed weights |
-
 | Oboe Exclusive | HAL-sim | Orchestrator `/audio/oboe` + C++ `open_oboe_exclusive_stream` + JNI; Exclusive/LowLatency/Float32 |
 | UAC2 VID/PID | none | sysfs hotplug + Android `UsbUac2Client` + `/devices/usb` + **PCM-Pipe `ipc_uac2`** |
 | BLE codecs | none | LC3plus/LC3/SBC/AAC/aptX negotiate + `BleCodecClient` + `/devices/ble` + **PCM-Pipe `ipc_ble`** |
 | Whisper TFLite int8 | filename | `TFL3` weights in `dist/offline-models/` + runtime + `/models/whisper` |
 | MiDaS depth | none | int8 weights + HxW depth buffer + `/models/midas` on NeuralLift generate |
+| Android JNI | missing | live JNI + WebView shell (Assets synchronisiert mit `web/`, inkl. `src/dsp-core.js`) |
+| USB/BT hardware pairing | OS APIs | still needs a device — probe/status live, pairing blocked |
+| TFLite Whisper / MiDaS weights | missing | blocked without licensed weights |
 
 ## Ehrliche Abgrenzung der neuen Teile
 
