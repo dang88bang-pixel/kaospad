@@ -8,6 +8,8 @@
 | DSP limiter / transient / Kaoss | Python+C++ real math | unchanged live DSP (not a stub) **plus** WASM-Build desselben C++-Kerns |
 | **DSP-Kern im Browser** | JS-Neuimplementierung | `dist/wasm/kaoss_dsp.wasm` aus `kaoss_dsp_abi.cpp`; Parität gegen natives Binary + Python-Spiegel gemessen (≤ 5e-7) |
 | AudioFlinger/Oboe HAL | C++ latency simulator | still HAL-sim (needs device NDK/Oboe); contract live |
+| Audio-Input → DSP | fixture (Determinismus) | portabler Kern `kaoss_audio_processor` + AAudio-Stream `aaudio_input_engine` + AudioRecord-Fallback `AudioInputController`; Host-Test grün, Gerät offen |
+| WebAudio → DSP | reiner Synth-Pfad | WASM-Einstieg `dsp_core_wasm.cpp` + JS-Spiegel `dsp-core.js` (WASM-first, JS-Fallback); Transient-Events im Live-Meter |
 | Whisper | fixed text | live feature-transcriber on PCM when no `text`; SQLite rhymes expanded |
 | NeuralLift | filename string | real **glTF/GLB binary** written to `dist/avatars/` |
 | Avatar skeleton | fps/count only | 33-landmark pose buffer (`mopac_dance_learner/pose.py`) |
@@ -19,8 +21,10 @@
 | BLE codecs | none | LC3plus/LC3/SBC/AAC/aptX negotiate + `BleCodecClient` + `/devices/ble` + **PCM-Pipe `ipc_ble`** |
 | Whisper TFLite int8 | filename | `TFL3` weights in `dist/offline-models/` + runtime + `/models/whisper` |
 | MiDaS depth | none | int8 weights + HxW depth buffer + `/models/midas` on NeuralLift generate |
-| Android JNI | missing | live JNI + WebView shell (Assets synchronisiert mit `web/`, inkl. `src/dsp-core.js`) |
+| Android JNI | missing | live JNI + WebView shell (Assets synchronisiert mit `web/`, inkl. `src/dsp-core.js`); Audio-Input, USB/BLE- und Permission-Bridge aus PR #4 |
 | USB/BT hardware pairing | OS APIs | still needs a device — probe/status live, pairing blocked |
+| Daemon-Restart | statisch | `/api/daemons` + `/api/daemons/restart` (logisch in-process) + PID/Health im PortView |
+| Release-Artefakte | Platzhalter | `verify_release_artifacts.py` lehnt Stubs ab; SBOM + SHA256SUMS im Publish-Job |
 | TFLite Whisper / MiDaS weights | missing | blocked without licensed weights |
 
 ## Ehrliche Abgrenzung der neuen Teile

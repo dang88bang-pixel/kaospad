@@ -15,9 +15,11 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import os
 import select
 import socket
 import sys
+import threading
 import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -31,7 +33,13 @@ sys.path.insert(0, str(ROOT / "engines" / "whisper_offline"))
 sys.path.insert(0, str(ROOT / "engines" / "neurallift_360"))
 
 from device_matrix import status as device_status  # noqa: E402
-from dsp_chain import LIMITER_THRESHOLD_DBFS, KaossQuadChain, process_block, test_signal  # noqa: E402
+from dsp_chain import (  # noqa: E402
+    LIMITER_THRESHOLD_DBFS,
+    KaossQuadChain,
+    direct_pipe_roundtrip_ms,
+    process_block,
+    test_signal,
+)
 from rhyme_matrix import ensure_database, lookup  # noqa: E402
 from session_engine import (  # noqa: E402
     ACTION_BY_NAME,
@@ -112,7 +120,7 @@ ENDPOINT_LIST = [
     "/api/dsp/process", "/api/pad/trigger", "/api/transport/record", "/api/loop/capture",
     "/api/transcribe", "/api/rhymes", "/api/avatar/mode", "/api/neurallift/generate",
     "/api/session/export", "/api/session/latest", "/api/session/restore", "/api/session/replay", "/api/sessions",
-    "/api/audio/capture", "/wasm/kaoss_dsp.wasm",
+    "/api/audio/capture", "/api/audio/calibrate", "/api/daemons", "/wasm/kaoss_dsp.wasm",
     "/mesh/default", "/dsp/transient", "/api/logs",
 ]
 
@@ -120,6 +128,77 @@ ENGINE = build_engine(DB_PATH)
 # Native-Bridge: welcher Engine-Port zuletzt zur Aktion geladen wurde.
 BRIDGE_LOADED: dict[int, dict[str, object]] = {}
 BRIDGE_ACTIVE_PORT: int | None = None
+
+# Logische Daemon-Registry (one-app: alle Engine-Rollen laufen in diesem Prozess).
+DAEMON_REGISTRY_LOCK = threading.Lock()
+DAEMON_RESTARTS: dict[int, int] = {}
+DAEMON_LAST_RESTART_MS: dict[int, float] = {}
+
+
+def daemon_statuses() -> list[dict[str, object]]:
+    with DAEMON_REGISTRY_LOCK:
+        return [
+            {
+                "port": int(spec["port"]),
+                "name": spec["name"],
+                "pid": os.getpid(),
+                "in_process": True,
+                "health": "ok",
+                "restarts": DAEMON_RESTARTS.get(int(spec["port"]), 0),
+                "last_restart_ms": DAEMON_LAST_RESTART_MS.get(int(spec["port"])),
+            }
+            for spec in DAEMONS
+        ]
+
+
+def restart_daemon(port: int) -> dict[str, object]:
+    known = {int(spec["port"]) for spec in DAEMONS}
+    if port not in known:
+        return {"ok": False, "error": f"unknown daemon port {port}", "known": sorted(known)}
+    now_ms = round(time.time() * 1000.0, 3)
+    with DAEMON_REGISTRY_LOCK:
+        DAEMON_RESTARTS[port] = DAEMON_RESTARTS.get(port, 0) + 1
+        DAEMON_LAST_RESTART_MS[port] = now_ms
+    # Die One-App läuft als ein Prozess: "Restart" re-initialisiert die logische
+    # Rolle (Bridge-Load-State + Health), statt einen echten Prozess neu zu starten.
+    if port == BRIDGE_ACTIVE_PORT:
+        BRIDGE_LOADED.pop(port, None)
+    return {
+        "ok": True,
+        "logical_restart": True,
+        "in_process": True,
+        "port": port,
+        "pid": os.getpid(),
+        "restarts": DAEMON_RESTARTS[port],
+        "health": "ok",
+        "last_restart_ms": now_ms,
+    }
+
+
+def calibrate_roundtrip() -> dict[str, object]:
+    """Deterministische Loopback-Kalibrierung des Audio-Pfads (Python-DSP-Spiegel)."""
+    sample_rate = float(ENGINE.audio["sample_rate_hz"])
+    frames = int(ENGINE.audio["frames_per_buffer"])
+    chain = KaossQuadChain()
+    chain.bpm = ENGINE.chain.bpm
+    chain.sample_rate_hz = sample_rate
+    started = time.perf_counter()
+    signal = test_signal("mouth_bass", frames=frames, sample_rate_hz=sample_rate)
+    report = process_block(signal, chain, sample_rate)
+    compute_ms = round((time.perf_counter() - started) * 1000.0, 3)
+    return {
+        "ok": True,
+        "method": "deterministic-fixture",
+        "sample_rate_hz": sample_rate,
+        "frames_per_buffer": frames,
+        "block_latency_ms": round(float(report["latency_ms"]), 3),
+        "direct_pipe_roundtrip_ms": round(direct_pipe_roundtrip_ms(sample_rate, frames), 3),
+        "dsp_compute_ms": compute_ms,
+        "peak_dbfs": report["output_peak_dbfs"],
+        "limiter_dbfs": LIMITER_THRESHOLD_DBFS,
+        "transient": report["transient"],
+        "zero_cloud": True,
+    }
 
 
 def load_native_port_for_action(action: str) -> dict[str, object] | None:
@@ -462,6 +541,18 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                 "block": block,
                 "pcm_preview": pcm_preview,
                 "stats": dict(ENGINE.capture_stats),
+                # Client-Seite (Browser/Android-Shell): echte AAudio/AudioRecord-
+                # Aufnahme läuft nativ, im Browser WebAudio – hier nur projiziert.
+                "client": {
+                    "backend": "browser-webaudio",
+                    "native_aaudio": False,
+                    "fallback_audiorecord": False,
+                    "running": bool(ENGINE.audio["mic_armed"]),
+                    "sample_rate_hz": ENGINE.audio["sample_rate_hz"],
+                    "frames_per_buffer": ENGINE.audio["frames_per_buffer"],
+                    "underruns": ENGINE.audio["underruns"],
+                    "note": "Native AAudio/AudioRecord capture runs in the Android shell; WebAudio in the browser.",
+                },
             })
             return
 
@@ -630,6 +721,14 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json({"ok": True, "logs": self.chain_logs()})
             return
 
+        if path in {"/api/daemons", "/daemons"}:
+            self.send_json({"ok": True, "mode": "one-app", "in_process": True, "daemons": daemon_statuses()})
+            return
+
+        if path in {"/api/audio/calibrate", "/audio/calibrate"}:
+            self.send_json(calibrate_roundtrip())
+            return
+
         if path == "/transcribe":
             text = query.get("text", ["drück und laber beton sektor dämon"])[0]
             transcripts = ENGINE.lyrics["transcripts"]
@@ -713,6 +812,20 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": f"no port mapping for action {action}"}, code=400)
                 return
             self.send_json(loaded)
+            return
+
+        if path in {"/api/daemons/restart", "/daemons/restart"}:
+            try:
+                port = int(params.get("port", 0))
+            except (TypeError, ValueError):
+                self.send_json({"ok": False, "error": "port must be an integer"}, code=400)
+                return
+            result = restart_daemon(port)
+            self.send_json(result, code=200 if result["ok"] else 400)
+            return
+
+        if path in {"/api/audio/calibrate", "/audio/calibrate"}:
+            self.send_json(calibrate_roundtrip())
             return
 
         action = POST_ROUTES.get(path)
@@ -853,6 +966,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         engine_hits = {}
         for event in ENGINE.events:
             engine_hits[event["engine"]] = engine_hits.get(event["engine"], 0) + 1
+        health = {row["port"]: row for row in daemon_statuses()}
         rows = []
         for spec in DAEMONS:
             port = int(spec["port"])
@@ -868,6 +982,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                 status = "LOCKED"
             else:
                 status = "READY"
+            daemon = health.get(port, {})
             rows.append({
                 **spec,
                 "bind": self.server.server_address[0],
@@ -877,6 +992,9 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                 "loaded_action": (loaded or {}).get("action"),
                 "native_bridge": True,
                 "chain_hits": hits,
+                "pid": daemon.get("pid"),
+                "health": daemon.get("health", "ok"),
+                "restarts": daemon.get("restarts", 0),
             })
         return rows
 

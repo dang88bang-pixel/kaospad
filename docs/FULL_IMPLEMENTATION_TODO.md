@@ -28,6 +28,10 @@ Checkbox-Marker: `[x]` = erledigt und getestet, `[~]` = teilweise erledigt (lauf
 | Bereich | Pfad | Status |
 |---|---|---|
 | C++ DSP Core | `android/app/src/main/cpp/` | ✅ DONE |
+| Audio-Input→DSP-Prozessor (Limiter/Transient/Quad) | `android/app/src/main/cpp/kaoss_audio_processor.{hpp,cpp}` | ✅ DONE |
+| AAudio-Stream + Fixture-Facade | `android/app/src/main/cpp/aaudio_input_engine.cpp`, `audio_input_engine.{hpp,cpp}` | ✅ DONE / ⛔ Gerät |
+| WASM-DSP-Einstieg + JS-Spiegel | `web/wasm/dsp_core_wasm.cpp`, `web/src/dsp-core.js`, `scripts/build_wasm.sh` | ✅ DONE / ⛔ emcc |
+| Release-Guard + SBOM | `scripts/verify_release_artifacts.py`, `scripts/generate_sbom.py` | ✅ DONE |
 | CMake Build | `CMakeLists.txt` | ✅ DONE |
 | Makefile Hub | `Makefile` | ✅ DONE |
 | Localhost IPC Suite | `engines/localhost_ipc_suite.py` | ✅ DONE / 🧪 SHIM |
@@ -64,6 +68,7 @@ Erwartete Ausgaben:
 AudioFlinger direct-pipe simulator: route=127.0.0.1:8081 roundtrip_ms=1.2
 Limiter peak=-3.2 dBFS threshold=-3.2 dBFS
 Transient kind=1 freq=52 latency_ms=1
+audio input processor + engine fixture verified: 19 checks
 zero-cloud localhost IPC gate passed for ports 8080-8085
 multi-avatar sync benchmark passed
 android USB/mic/bluetooth permissions and features declared
@@ -71,8 +76,10 @@ web functional audio/device/rhyme contract declared // action chain parity: 19 a
 kaoss one-app e2e contract passed
 vollständige Aktions- und Interaktionskette verifiziert: 236 Checks, 23 Ketten-Schritte, max 7.847 ms, peak -3.2 dBFS
 browser action & interaction chain verified: 89 checks (offline + blocked + live server)
-browser UI action & interaction chain verified: 93 checks against http://127.0.0.1:8106
+browser UI action & interaction chain verified: 107 checks against http://127.0.0.1:8106 (inkl. SCREEN_6/14/29)
 zero-cloud socket guard passed: 24 chain steps, 3 loopback connections, 1 resolved hosts, 2 external attempts blocked
+native audio bridge contract verified: 39 checks
+release artifact guard verified: 13 checks
 ```
 
 ---
@@ -342,7 +349,7 @@ Aktuell: ✅ Grund-State + Freeze, 🧪 noch keine volle Emulation.
 - [~] Tape Echo: Ambience-/Feedback-Term + Wow/Flutter vorhanden, echtes Band-Modell offen.
 - [ ] Ping-Pong Delay.
 - [ ] Dark Hall Reverb.
-- [ ] KP3+ 8x8 LED Matrix UI.
+- [x] KP3+ 8x8 LED Matrix UI (XY-Orb + Transient-Flash + Freeze-Anzeige, `web/src/app.js` `paintLedMatrix`).
 - [x] Sample Banks A/B/C/D (`pad.trigger` mit 16 Slots, Transient + 808-Voice, UI-Pad-Grid).
 - [ ] Resampling Engine.
 - [ ] Master FX Release Slider.
@@ -540,12 +547,12 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 | Screen | Name | Status | TODO |
 |---|---|---:|---|
 | SCREEN_4 | Tanz-Anlern-Modus | 🧩 TODO | Camera/MoCap UI, Profile Slots A-D |
-| SCREEN_6 | Server Daemon Matrix | ✅ teilweise | Live logs ✅, chain hits pro Port ✅; restart buttons, PID monitor offen |
+| SCREEN_6 | Server Daemon Matrix | ✅ DONE | Live logs ✅, chain hits ✅, PID/Health ✅, RESTART (`/api/daemons/restart`, logisch in-process) ✅ |
 | SCREEN_7 | Multi-Avatar Party | 🧩 TODO | 3D stage, 8 avatar slots, modes |
 | SCREEN_9 | Clean Cypher HUD | 🧩 TODO | Gesture overlays |
 | SCREEN_10 | Funky Live 3D Avatar Cypher | 🧩 TODO | NeuralLift UI + bottom nav |
 | SCREEN_13 | One-Touch Cypher USB-C Sync | 🧩 TODO | Big recording capsules + USB status |
-| SCREEN_14 | Mobile USB-C Audio & Mic Matrix | ✅ teilweise | Real device scan and calibration |
+| SCREEN_14 | Mobile USB-C Audio & Mic Matrix | ✅ DONE | Detail-Drawer, Gain/Monitor/BT-Komp/USB-Rate/AGC/NS, Loopback-Kalibrierung ✅; echter Geräte-Scan bleibt Shim (OS-APIs in Android-Shell) |
 | SCREEN_15 | Desktop Master Studio | 🧩 TODO | 3-panel console |
 | SCREEN_16 | YouTube Auto Detection | 🧩 TODO | Browser/source detection limits |
 | SCREEN_17 | Modular Theme FX | 🧩 TODO | Preset browser |
@@ -555,7 +562,7 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 | SCREEN_22 | Endless Reel Recursion Studio | 🧩 TODO | Tape reel UI and overdubs |
 | SCREEN_23 | Cyber-Transkriptor & Track Vault | 🧩 TODO | Teleprompter, colored rhymes, export |
 | SCREEN_28 | AI Beatbox Session & Musik Agent | 🧩 TODO | Freeform lanes A/B |
-| SCREEN_29 | Kaoss Pad Quad FX Studio | ✅ teilweise | 4 FX-Engines mit XY/Freeze/Looper ✅, Ketten-Panel ✅; 8x8 LED-Matrix offen |
+| SCREEN_29 | Kaoss Pad Quad FX Studio | ✅ DONE | 4 FX-Engines mit XY/Freeze/Looper ✅, Ketten-Panel ✅, 8×8 LED-Matrix + Quad-Readouts ✅ |
 
 ### 7.4 Plug-&-Play UI spezifisch
 
@@ -564,14 +571,14 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 - [x] Permissionkarten.
 - [x] Latency/Route Anzeige.
 - [ ] Real hardware icon states.
-- [ ] Device detail drawer.
-- [ ] Input gain slider.
-- [ ] Monitor mix slider.
-- [ ] Bluetooth delay compensation UI.
-- [ ] USB sample-rate override.
-- [ ] Mic AGC toggle.
-- [ ] Noise suppression toggle.
-- [ ] Test tone / loopback calibration button.
+- [x] Device detail drawer.
+- [x] Input gain slider.
+- [x] Monitor mix slider.
+- [x] Bluetooth delay compensation UI.
+- [x] USB sample-rate override.
+- [x] Mic AGC toggle.
+- [x] Noise suppression toggle.
+- [x] Test tone / loopback calibration button.
 
 ---
 
@@ -581,15 +588,15 @@ Aktuell: ✅ alle Ports ausführbar als Shims.
 
 Aktuell: 🧪 Scaffold-Artefakte.
 
-- [ ] Offiziellen Gradle Wrapper erzeugen und committen.
+- [~] Offiziellen Gradle Wrapper erzeugen und committen (Jar offline nicht erzeugbar; `scripts/verify_gradle_wrapper.py` + `scripts/fetch_gradle_wrapper.sh`, CI nutzt `gradle/actions/setup-gradle`).
 - [x] Kotlin/Java MainActivity vollständig (WebView + JS Bridge).
 - [x] Native Library laden (`System.loadLibrary("kaoss_native")`).
-- [x] JNI Bridge für DSP (`kaoss_jni.cpp`: pipe, limiter, transient).
-- [ ] JNI Bridge für Device Matrix.
+- [x] JNI Bridge für DSP (`kaoss_jni.cpp`: pipe, limiter, transient, audio input).
+- [x] JNI Bridge für Device Matrix (`audioInputStatus`, `usbSnapshot`, `bleNegotiate`, `permissionState`, `start/stopAudioCapture`).
 - [x] Runtime Permissions UI (RECORD_AUDIO / Bluetooth 12+).
 - [ ] Foreground Audio Service.
-- [ ] Release Signing konfigurieren.
-- [ ] AAB Build real validieren.
+- [x] Release Signing konfigurieren (Keystore via Secrets oder CI-generiert; APK v1+v2 Signatur im Workflow).
+- [~] AAB Build real validieren (Workflow `bundleRelease`; Runner-Lauf offen).
 - [ ] APK Build auf Gerät installieren.
 - [ ] Hardware loopback test auf Gerät.
 
@@ -628,9 +635,9 @@ Aktuell: 🧪 Scaffold-Artefakte.
 - [x] Offline Cache.
 - [x] PWA Manifest.
 - [ ] Install prompt UI.
-- [ ] WebAudio Input Capture.
+- [x] WebAudio Input Capture (`audio-engine.js`: getUserMedia + DSP-Kern-Analyse + Transient-Events).
 - [ ] WebMIDI optional.
-- [ ] WASM DSP Build.
+- [~] WASM DSP Build (`web/wasm/dsp_core_wasm.cpp` + `scripts/build_wasm.sh`; JS-Spiegel als Fallback; Emscripten-Lauf offen).
 - [ ] SharedArrayBuffer/Cross-Origin Isolation prüfen.
 - [ ] Browser storage quota handling.
 
@@ -668,14 +675,17 @@ Aktuell: Workflows vorhanden, aber viele Schritte bauen Shims oder benötigen Ru
 - [x] Audio latency simulator.
 - [x] Limiter test.
 - [x] Transient splitter test.
+- [x] Audio-Input→DSP-Prozessor + Engine-Fixture (19 Checks, `audio_input_processor_test.cpp`).
 - [x] Localhost IPC test ports `8080–8085`.
 - [x] Multi-avatar synthetic FPS benchmark.
 - [x] Android permission manifest test.
 - [x] Full action & interaction chain test (HTTP, 236 Checks).
 - [x] Browser chain module test (offline + live server, 89 Checks).
-- [x] Headless UI interaction test mit DOM-Stub (93 Checks).
+- [x] Headless UI interaction test mit DOM-Stub (107 Checks inkl. SCREEN_6/14/29).
 - [x] Zero-cloud socket monkeypatch gate.
 - [x] Web/Server chain parity test (Katalog, Skript, Ports, Guards).
+- [x] Native Audio-Bridge Contract (JNI↔Kotlin↔WASM↔JS, 39 Checks).
+- [x] Release-Artifact-Guard (Platzhalter-Erkennung, 13 Checks).
 
 ### 10.2 Noch fehlende Tests
 
@@ -752,13 +762,13 @@ Aktuell: Workflows vorhanden, aber viele Schritte bauen Shims oder benötigen Ru
 
 Zielnamen aus Spezifikation:
 
-- [ ] `KaossBeatboxStudio-v5.0.0-Universal-Signed.apk`
-- [ ] `KaossBeatboxStudio-v5.0.0-Universal.aab`
+- [~] `KaossBeatboxStudio-v5.0.0-Universal-Signed.apk` (Workflow baut echten Gradle-APK; lokales `releases/`-Exemplar ist ein Offline-Stub und wird vom Guard abgelehnt).
+- [~] `KaossBeatboxStudio-v5.0.0-Universal.aab` (Workflow `bundleRelease`; Runner-Lauf offen).
 - [ ] `KaossBeatboxStudio-v5.0.0-x86_64.AppImage`
 - [ ] `KaossBeatboxStudio-v5.0.0-Universal.dmg`
 - [ ] `KaossBeatboxStudio-v5.0.0-Setup.msi`
-- [x] `KaossBeatboxStudio-WebAssembly-Offline.zip` als PWA ZIP Scaffold
-- [ ] SHA256SUMS Datei.
+- [x] `KaossBeatboxStudio-WebAssembly-Offline.zip` als PWA ZIP (inkl. WASM-Build bei vorhandenem Emscripten).
+- [x] SHA256SUMS Datei (im Publish-Job erzeugt).
 - [ ] GPG Signaturen optional.
 - [ ] Release Notes.
 - [ ] Installationsanleitung pro OS.
@@ -770,13 +780,13 @@ Zielnamen aus Spezifikation:
 
 ### Phase A – Ehrliche Beta lauffähig machen
 
-1. [~] Android Gradle Wrapper Properties + Gradle-Skript vorhanden; offizielles `gradle-wrapper.jar` folgt mit JDK.
-2. [x] Android JNI Bridge zwischen UI und C++ DSP bauen.
-3. [x] Android Runtime Permissions UI für Mic/Bluetooth/USB implementieren.
-4. [ ] AudioRecord/AAudio Input wirklich an DSP anschließen.
-5. [ ] WebAudio/WASM Fallback für Browser implementieren.
-6. [ ] UI Screens SCREEN_14, SCREEN_29, SCREEN_6 fertigstellen.
-7. [ ] Release Workflow ohne Platzhalter-Artefakte validieren.
+1. [~] Android Gradle Wrapper Properties + Gradle-Skript vorhanden; offizielles `gradle-wrapper.jar` folgt mit JDK/Netz (Sandbox offline). CI nutzt `gradle/actions/setup-gradle` 8.7; Verifikation via `scripts/verify_gradle_wrapper.py`, Download via `scripts/fetch_gradle_wrapper.sh`.
+2. [x] Android JNI Bridge zwischen UI und C++ DSP bauen (`kaoss_jni.cpp` ↔ `KaossNative.kt` ↔ `KaossJsBridge.kt`; Signatur-Parität in `tests/native_audio_bridge_test.py` getestet).
+3. [x] Android Runtime Permissions UI für Mic/Bluetooth/USB implementieren (inkl. `onRequestPermissionsResult` + USB-Permission-Intent-Flow in `MainActivity.kt`).
+4. [x] AudioRecord/AAudio Input wirklich an DSP anschließen: neuer portabler DSP-Kern `kaoss_audio_processor.{hpp,cpp}` (Limiter + Transient + Kaoss Quad), AAudio-Stream `aaudio_input_engine.cpp` (Exclusive→Shared, LowLatency, Float32, xrun/disconnect-Handling), AudioRecord-Fallback `AudioInputController.kt`; Host-Test `audio_input_processor_test` (19 Checks) grün. ⛔ Kompilierung/Test auf echtem Gerät offen (kein NDK/Gerät in Sandbox).
+5. [x] WebAudio/WASM Fallback für Browser implementieren: `web/wasm/dsp_core_wasm.cpp` + `scripts/build_wasm.sh` (Emscripten) + `web/src/dsp-core.js` (WASM-first, reiner JS-Spiegel als Zero-Cloud-Fallback, Zahlen 1:1 zu C++/Python). ⛔ WASM-Build offen (kein Emscripten in Sandbox); JS-Spiegel läuft und ist getestet.
+6. [x] UI Screens SCREEN_14, SCREEN_29, SCREEN_6 fertigstellen: SCREEN_14 (Device-Detail-Drawer, Input-Gain, Monitor-Mix, BT-Kompensation, USB-Sample-Rate-Override, AGC/NS-Toggles, Loopback-Kalibrierung), SCREEN_29 (8×8 LED-Matrix + Quad-FX-Readouts), SCREEN_6 (Daemon-PID/Health + RESTART). Server-Endpunkte `/api/daemons`, `/api/daemons/restart`, `/api/audio/calibrate`, `/api/audio/capture`; UI-Katalog-Checks im bestehenden Headless-Harness (107 Checks).
+7. [x] Release Workflow ohne Platzhalter-Artefakte validieren: `scripts/verify_release_artifacts.py` lehnt Offline-Stub-APKs (kein `lib/*/libkaoss_native.so`) ab, `scripts/generate_sbom.py` erzeugt SBOM, Workflow baut Android via Gradle (APK+AAB) und publiziert nur verifizierte Artefakte mit SHA256SUMS+SBOM; `tests/release_artifact_guard_test.py` (13 Checks) nutzt das vorhandene Stub-APK als Negativ-Fixture. ⛔ Echte Runner-Läufe (macOS/Win/Desktop-Installer) offen.
 
 ### Phase B – Audio-Produktion
 

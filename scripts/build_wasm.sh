@@ -138,3 +138,37 @@ PY
 
 echo "wasm gebaut: dist/wasm/kaoss_dsp.wasm (${SIZE} B, sha256 ${SHA:0:12}…)"
 echo "manifest:    dist/wasm/build-manifest.json"
+# ---------------------------------------------------------------------------
+# Optionales zweites Artefakt (Pfad aus main/PR#4): Emscripten-ES6-Modul für
+# den Browser (web/wasm/dsp_core.mjs + .wasm) mit den kaoss_wasm_*-Exports.
+# emcc ist nicht überall verfügbar – dann wird nur das Rohmodul oben gebaut
+# und die UI nutzt den JS-Spiegel. Kein Fehler.
+# ---------------------------------------------------------------------------
+build_emscripten_module() {
+  command -v emcc >/dev/null 2>&1 || {
+    echo "emcc fehlt: web/wasm/dsp_core.mjs wird übersprungen (UI nutzt JS-Spiegel)." >&2
+    return 0
+  }
+  local WEB_OUT="$ROOT/web/wasm"
+  [[ -f "$WEB_OUT/dsp_core_wasm.cpp" ]] || {
+    echo "web/wasm/dsp_core_wasm.cpp fehlt: Emscripten-Modul übersprungen." >&2
+    return 0
+  }
+  mkdir -p "$WEB_OUT"
+  emcc "$WEB_OUT/dsp_core_wasm.cpp" \
+    "$CPP/audio_flinger_hook.cpp" \
+    "$CPP/dsp_transient_splitter.cpp" \
+    "$CPP/kaoss_audio_processor.cpp" \
+    "$CPP/kaoss_quad_engine.cpp" \
+    -I"$CPP" \
+    -std=c++17 -O3 \
+    -s WASM=1 -s MODULARIZE=1 -s EXPORT_ES6=1 -s ENVIRONMENT=web,worker \
+    -s EXPORT_NAME=KaossDspCore \
+    -s EXPORTED_FUNCTIONS='["_kaoss_wasm_limiter_peak","_kaoss_wasm_detect_transient","_kaoss_wasm_process_block","_kaoss_wasm_set_xy","_kaoss_wasm_freeze","_kaoss_wasm_synth_808","_malloc","_free"]' \
+    -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","HEAPF32","HEAPU8","HEAP32","HEAPF64"]' \
+    -s ALLOW_MEMORY_GROWTH=1 \
+    -o "$WEB_OUT/dsp_core.mjs"
+  echo "zusätzlich gebaut: web/wasm/dsp_core.mjs + web/wasm/dsp_core.wasm"
+}
+
+build_emscripten_module

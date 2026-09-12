@@ -1,7 +1,36 @@
 # Bereitstellungs- und Validierungsbericht – Kaoss Pad & AI Beatbox Studio
 
-Datum: 2026-09-09  
-Branch: `arena/01a083de-kaospad`
+Datum: 2026-09-09 (Update 2026-09-11)  
+Branch: `arena/01a083de-kaospad` (Update: `arena/01a08ebf-kaospad`)
+
+## Phase A – Ehrliche Beta lauffähig machen (Update 2026-09-11)
+
+Arbeitspakete aus `docs/FULL_IMPLEMENTATION_TODO.md` §15 wurden abgearbeitet:
+
+| # | Paket | Ergebnis |
+|---|---|---|
+| 2 | Android JNI-Bridge | Signatur-Parität JNI↔Kotlin in `tests/native_audio_bridge_test.py` (39 Checks) |
+| 3 | Runtime-Permissions UI | `onRequestPermissionsResult` + USB-Permission-Intent-Flow + `ContextCompat.registerReceiver` |
+| 4 | AudioRecord/AAudio → DSP | portabler Kern `kaoss_audio_processor.{hpp,cpp}`, `aaudio_input_engine.cpp` (Exclusive→Shared/LowLatency/Float32, xrun+disconnect), `audio_input_engine.cpp` (Fixture-Facade), AudioRecord-Fallback `AudioInputController.kt`; Host-Test `audio_input_processor_test` 19 Checks grün. Geräte-/NDK-Verifikation offen (Sandbox ohne JDK/NDK/Gerät). |
+| 5 | WebAudio/WASM-Fallback | `web/wasm/dsp_core_wasm.cpp` + `scripts/build_wasm.sh` (Emscripten) + `web/src/dsp-core.js` (WASM-first, reiner JS-Spiegel, Zahlen 1:1 zu C++/Python); Transient-Events im Live-Meter. WASM-Build offen (kein emcc), JS-Spiegel getestet. |
+| 6 | SCREEN_6/14/29 | SCREEN_14 (Detail-Drawer, Gain/Monitor/BT-Komp/USB-Rate/AGC/NS, Loopback-Kalibrierung), SCREEN_29 (8×8 LED-Matrix + Quad-Readouts), SCREEN_6 (PID/Health + RESTART). Neue Endpunkte `/api/daemons`, `/api/daemons/restart`, `/api/audio/calibrate`, `/api/audio/capture`. UI-Katalog-Checks im Headless-Harness: 107 Checks. |
+| 7 | Release ohne Platzhalter | `scripts/verify_release_artifacts.py` (lehnt Stub-APK ohne `lib/*/libkaoss_native.so` ab), `scripts/generate_sbom.py`, `tests/release_artifact_guard_test.py` (13 Checks, Stub-APK als Negativ-Fixture), Workflow baut Android via Gradle (APK+AAB) + Publish-Job mit SHA256SUMS+SBOM+Guard. |
+| 1 | Gradle-Wrapper | `scripts/verify_gradle_wrapper.py` + `scripts/fetch_gradle_wrapper.sh`; Jar bleibt offline (kein Netz/JDK), CI nutzt `gradle/actions/setup-gradle` 8.7. |
+
+Neue/geänderte Testausgabe (`make test`):
+
+```text
+audio input processor + engine fixture verified: 19 checks
+browser UI action & interaction chain verified: 107 checks (inkl. SCREEN_6/14/29)
+native audio bridge contract verified: 39 checks
+release artifact guard verified: 13 checks
+```
+
+Ehrliche Abgrenzung (unverändert): echte AAudio/AudioRecord-Capture, echte
+USB/BLE-Pairing, WASM-Build und Geräte-Latenz brauchen Hardware bzw. NDK/Emscripten,
+die in dieser Sandbox nicht verfügbar sind. Der portable DSP-Kern, die JS-Spiegel-
+Parität, die Server-Endpunkte, die UI-Screens und der Release-Guard sind hier
+ausführbar und getestet.
 
 ## Ergebnis
 
