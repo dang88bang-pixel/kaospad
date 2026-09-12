@@ -163,14 +163,16 @@ Letzter **lesbarer** CI-Lauf: 5 von 7 Specs grün. Zwei Fehler, beide als echte 
 
 ## Verbleibende ⛔-Blocker
 
+Belege, HTTP-Codes und Aufwand je Blocker: **`docs/audit/ONLINE-ALTERNATIVEN.md`** (Evaluation vom 2026-09-12; 3 von 8 Blockern real beseitigt).
+
 1. ~~**GitHub-Zugang**~~ — **behoben:** Der Token wurde in Arena erneuert; `gh auth status` meldet wieder `✓ Logged in`, und die Commits `d9308cb…7d1a736` sind gepusht. CI-Run `34713717145` lief dadurch erstmals vollständig durch (4/4 Jobs grün).
 2. **Playwright-Browser in der Sandbox:** `cdn.playwright.dev` gesperrt, apt hat kein Chromium (`Unable to locate package`). **Workaround:** `make test-ui-list` prüft die Specs (7/7 discoverbar), `make test-ui` meldet SKIP mit Grund, CI-Job `ui-browser` führt sie mit Chromium aus.
 3. **Log-/Artefakt-Download von CI:** `results-receiver.actions.githubusercontent.com` und `*.blob.core.windows.net` liefern `EOF`. **Workaround:** der Job postet seine Fehler selbst als PR-Kommentar (`permissions: pull-requests: write`).
-4. **Echte Modellgewichte** (Whisper/MiDaS int8): lizenzpflichtig → `offline-placeholder:`-Shim.
+4. **Echte Modellgewichte** (Whisper/MiDaS int8): HuggingFace und GitHub-Release-Assets sind gesperrt (`302 → 0 Bytes`, weil `objects.githubusercontent.com` nicht erreichbar ist) → `offline-placeholder:`-Shim. **Belegter Kandidat:** `pocketsphinx 5.1.1` via PyPI (BSD-2-Clause) enthält ein vollständiges akustisches Modell (`mdef`, `means`, `variances`, `sendump`, `transition_matrices`, LMs, Wörterbuch, native Extension); bewusst **nicht** eingebaut, weil die Architektur auf deterministischer SHA-256-Parität beruht.
 5. **Echter AAudio/Oboe-HAL und BLE-LC3plus-Decoder:** brauchen Gerät bzw. Plattform-Codec; Loopback-Pipes übernehmen decodierte PCM-Blöcke.
 6. **Emscripten (`emcc`)** für `web/wasm/dsp_core.mjs`: nicht installierbar (`apt-get` findet es nicht). **Workaround:** ABI-Modul `dist/wasm/kaoss_dsp.wasm` wird mit `ziglang` gebaut und ist paritätsgeprüft; UI nutzt sonst den JS-Kern.
-7. **Echtes DEX in der signierten APK:** kein JDK/`d8` → Stub-DEX (PLACEHOLDER-Marker in `build_signed_apk.py`).
-8. **Gradle-Wrapper-Jar:** fehlt lokal (kein JDK/Netz) → `scripts/fetch_gradle_wrapper.sh`, CI stellt Gradle 8.7.
+7. ~~**Echtes DEX in der signierten APK**~~ — **behoben (Online-Alternative):** kein JDK/`d8`, aber DEX-035 ist vollständig spezifiziert. `engines/dex_builder.py` assembliert ein echtes 504-Byte-DEX (`Lcom/kaoss/studio/MainActivity;` extends `android.app.Activity`, `nativeVersion()I` = `const/4`+`return`, `<init>()V` = `invoke-direct`+`return-void`, Adler-32 + SHA-1, 10 Map-Einträge). Der alte Stub war nicht nur unvollständig, sondern **ungültig** — `androguard` meldete `229 is not a valid TypeMapItem`; jetzt parst derselbe Parser die Klasse mit beiden Methoden und Code. Test: `dex builder verified` (61 PASS / 0 FAIL). **Grenze:** Java-Quellcode wird nicht kompiliert, das DEX wird direkt erzeugt.
+8. ~~**Gradle-Wrapper-Jar**~~ — **behoben (Online-Alternative):** `raw.githubusercontent.com` ist gesperrt, die GitHub-**Contents-API** funktioniert aber. `scripts/fetch_gradle_wrapper.sh` lädt jetzt über `api.github.com` (Fallback `raw`) und pinnt SHA-256 `cb0da6751c2b753a…`. Beleg: `git hash-object` ergibt denselben Blob-SHA1 `e6441136f3d4ba8a0da8d277868979cfbc8ad796` wie `gradle/gradle@v8.7.0`. `scripts/verify_gradle_wrapper.py` → `gradle wrapper contract verified: 5 checks`. **Grenze:** ein Gradle-*Build* braucht weiterhin Distribution (`services.gradle.org` ❌) und JDK (❌).
 
 ## Verbleibende TECH-DEBT
 

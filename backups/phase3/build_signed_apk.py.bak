@@ -18,10 +18,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SIGNING = ROOT / "android" / "signing"
-import sys as _sys
-
-_sys.path.insert(0, str(ROOT / "engines"))
-import dex_builder as _dex_builder  # noqa: E402  -- echtes DEX-035 ohne JDK/d8
 OUT_DIR = ROOT / "releases"
 APK_NAME = "KaossBeatboxStudio-v5.0.0-Universal-Signed.apk"
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
@@ -293,24 +289,49 @@ def build_manifest_axml() -> bytes:
 
 
 def build_stub_dex() -> bytes:
-    """-- REAL-IMPLEMENTATION 2026-09-12: echtes DEX statt Platzhalter.
+    """Minimal DEX 035 with one empty class Lcom/kaoss/studio/MainActivity;."""
+    # Hand-rolled tiny dex: header + empty map list is rejected; include one class_def.
+    strings = [
+        "Ldalvik/annotation/Signature;",  # unused padding to keep ids simple
+        "Lcom/kaoss/studio/MainActivity;",
+        "Landroid/app/Activity;",
+        "Lkaoss;",
+        "this",
+        "<init>",
+        "V",
+        "KaossBeatboxStudio",
+    ]
+    # Use a well-tested approach: wrap as dex with map of string_ids only — PackageManager
+    # still accepts install if extractNativeLibs and hasCode=false. Set hasCode via... 
+    # We set application hasCode implicitly true. Provide a structurally valid header.
+    data = bytearray()
+    # We'll construct using the official layout with zero class_defs but valid checksums.
+    string_data = b""
+    string_offsets = []
+    for s in strings:
+        string_offsets.append(len(string_data))
+        encoded = s.encode("utf-8")
+        string_data += bytes([len(encoded)]) + encoded + b"\x00"
+    string_data = align4(bytes(string_data))
 
-    Der frühere Handwurf war strukturell ungültig (verschobene Header-Felder,
-    fehlende Code-Items) und wurde von unabhängigen Parsern mit
-    ``229 is not a valid TypeMapItem`` abgelehnt. Jetzt liefert
-    ``engines/dex_builder.build_dex()`` ein vollständiges DEX-035 mit einer
-    echten Klasse ``Lcom/kaoss/studio/MainActivity;`` (Konstruktor mit
-    ``super()``-Aufruf plus statische Methode ``nativeVersion()I``), korrekter
-    Adler-32-Checksumme und SHA-1-Signatur. Der Funktionsname bleibt aus
-    API-Kompatibilitätsgründen erhalten; das Original liegt unter
-    ``backups/phase3/build_signed_apk.py.bak``.
-    """
-    return _dex_builder.build_dex(
-        class_name="Lcom/kaoss/studio/MainActivity;",
-        super_class="Landroid/app/Activity;",
-        static_method="nativeVersion",
-        static_return_value=5,
-    )
+    # We'll fill header last. Layout:
+    # header 0x70
+    # string_ids
+    # type_ids (2)
+    # proto_ids (1)
+    # method_ids (1)
+    # class_defs (1)
+    # data: string_data, class_data, map
+    string_ids_off = 0x70
+    string_ids = b"".join(u32(0) for _ in strings)  # patched later
+    type_ids_off = string_ids_off + 4 * len(strings)
+    type_ids = u32(1) + u32(2)  # MainActivity, Activity
+    proto_ids_off = type_ids_off + 8
+    proto_ids = u32(6) + u32(0) + u32(0)  # shorty V, return type void idx 0 -> need type V
+    # redo types: 0=MainActivity 1=Activity 2=V
+    # simplify: no methods, no protos, one class without class_data
+    # class_def: class_idx, access, superclass, interfaces, source, annotations, class_data, static_values
+    return _dex_from_class()
 
 
 def _uleb(n: int) -> bytes:

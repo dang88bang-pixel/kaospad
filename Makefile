@@ -21,7 +21,7 @@ build:
 wasm:
 	./scripts/build_wasm.sh
 
-test: test-native-dsp-latency test-resilience test-watchdog test-log-rotation test-bug-report test-flatbuffers-pcm test-dsp-error-handling test-failure-simulation test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui-list test-ui test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
+test: test-native-dsp-latency test-resilience test-watchdog test-log-rotation test-bug-report test-dex-builder test-flatbuffers-pcm test-dsp-error-handling test-failure-simulation test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui-list test-ui test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
@@ -58,6 +58,9 @@ test-dsp-error-handling:
 
 test-failure-simulation:
 	python3 tests/failure_simulation_test.py
+
+test-dex-builder: signed-apk
+	python3 tests/dex_builder_test.py
 
 test-offline-daemons:
 	python3 tests/offline_ipc_socket_test.py
