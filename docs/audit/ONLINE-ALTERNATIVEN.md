@@ -67,16 +67,18 @@ Binär-CDNs angewiesen ist, bleibt blockiert.
 > Anwendungslogik (die liegt in PWA und JNI-Schicht). „Vollständige Java-Kompilierung"
 > bleibt ohne JDK unmöglich.
 
-## 3. Echte Modell-Gewichte — ⚠️ TEILWEISE (ein echter Kandidat gefunden)
+## 3. Echte Modell-Gewichte — ✅ TEILS GELÖST (echter Dekoder eingebaut, opt-in)
 
 | | |
 | --- | --- |
 | **Blocker** | `engines/model_transcribe.py` liefert deterministische Platzhalter |
 | **Whisper/MiDaS** | ❌ HuggingFace `000`; GitHub-Release-Assets `302 → 0 Bytes` (MiDaS `midas_v21_small`), weil `objects.githubusercontent.com` gesperrt ist |
 | **Gefundene Alternative** | **`pocketsphinx 5.1.1`** via PyPI (BSD-2-Clause). Das Wheel (29 167 744 Bytes) enthält ein **vollständiges akustisches Englisch-Modell**: `en-us/en-us/{mdef,means,variances,sendump,transition_matrices,feat.params,noisedict}` plus `cmudict-en-us.dict`, `en-us.lm.bin`, `en-us-phone.lm.bin` und die native Extension `_pocketsphinx.cpython-311-x86_64-linux-gnu.so` |
-| **Bewertung** | Damit wäre *echte* Offline-Spracherkennung (Keyword-/Phrasendekoder) erstmals ohne Cloud möglich — ein Qualitätssprung gegenüber dem Platzhalter, aber ein anderes Modell als Whisper: Befehlsgrammatik statt Freitext-Transkription, Englisch statt Deutsch, und die Ausgabe wäre nicht mehr deterministisch reproduzierbar im SHA-256-Vergleich |
-| **Aufwand** | hoch: neuer Engine-Pfad, Paritätstests müssten auf „reale, nicht deterministische Ausgabe" umgestellt werden, 29 MB Binärabhängigkeit im Repo oder CI-Cache |
-| **Empfehlung** | **nicht in diesem Zyklus umsetzen.** Als eigenständiger Auftrag sinnvoll; der Platzhalter bleibt ehrlich gekennzeichnet, weil die bisherige Architektur auf deterministischer Parität beruht |
+| **Funktionsbeleg** | Modell lädt (`-hmm`, `-lm`, `-dict` zeigen auf reale Dateien im Wheel), Dekodierlauf läuft: `start_utt → process_raw(full_utt=True) → end_utt`, bei Stille+440-Hz-Ton leere Hypothese und 2 Segmente — korrekt, es ist keine Sprache enthalten |
+| **Umgesetzt** | `engines/whisper_offline/real_asr.py`: abhängigkeitfreie Vorverarbeitung (lineares Resampling auf 16 kHz, 16-Bit-Konversion mit Clipping), Verfügbarkeit wird ehrlich berichtet, ohne pocketsphinx kommt `RealAsrUnavailable` **statt** stillem Rückfall. `tflite_runtime.infer(..., real_asr_enabled=True)` schaltet den Pfad ein |
+| **Warum opt-in** | echte Dekodierung hebt die deterministische SHA-256-Parität der übrigen Suite auf. Der Feature-Transkriber bleibt deshalb Standard; echte Ergebnisse werden klar gekennzeichnet (`engine: "pocketsphinx"`, `real_weights: true`, `deterministic: false`) |
+| **Test** | `tests/real_asr_test.py` → **59 checks**: Vorverarbeitung exakt (Abtastraster `i·6`, Clipping, 96 kHz → 16 kHz = 2667 Frames), harter Fehlerpfad, echter Dekodierlauf, Regression auf den Standardweg, Zero-Cloud-Prüfung. Ohne pocketsphinx überspringt der echte Lauf ehrlich |
+| **Grenze** | anderes Modell als Whisper: Englisch statt Deutsch, akustisches Freitext-Modell statt Whisper-Multilingual; 29 MB Abhängigkeit nur per `pip`, nicht im Repo |
 
 ## 4. Emscripten / `emcc` für `web/wasm/dsp_core.mjs` — ❌ bleibt
 
@@ -126,13 +128,13 @@ CI als eigener Schritt `FlatBuffers reference toolchain (flatc + runtime)`.
 | --- | --- | --- | --- |
 | 8 | Gradle-Wrapper-Jar | ⛔ | ✅ real (byteidentisch zu upstream, gepinnt) |
 | 7 | echtes DEX in der APK | ⛔ | ✅ real (504 B, von androguard geparst) |
-| 4 | Modell-Gewichte | ⛔ | ⚠️ pocketsphinx 5.1.1 verfügbar, bewusst nicht eingebaut |
+| 4 | Modell-Gewichte | ⛔ | ✅ echter pocketsphinx-Dekoder eingebaut (opt-in, 59 checks) |
 | 6 | `emcc` | ⛔ | ❌ bleibt (Zig-Pfad deckt WASM ab) |
 | 2 | lokales Chromium | ⛔ | ❌ bleibt (CI übernimmt) |
 | 5 | AAudio/Oboe + BLE | ⛔ | ❌ bleibt (Gerät fehlt; Quellen wären da) |
 | 3 | JDK / `d8` | ⛔ | ❌ bleibt (durch Punkt 7/2 umgangen) |
 | 1 | `flatc`-Persistenz | ⛔ | ✅ gelöst (PyPI + CI-Schritt) |
 
-**Von 8 Blockern sind 3 real beseitigt** (Wrapper-Jar, DEX, `flatc`), einer hat einen
-konkreten, belegten Kandidaten (pocketsphinx), vier bleiben aus Netz- bzw.
-Hardwaregründen bestehen — jeder mit funktionierendem Workaround und Test.
+**Von 8 Blockern sind 4 real beseitigt bzw. real umgesetzt** (Wrapper-Jar, DEX,
+`flatc`, echter ASR-Dekoder), vier bleiben aus Netz- bzw. Hardwaregründen
+bestehen — jeder mit funktionierendem Workaround und Test.

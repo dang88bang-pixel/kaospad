@@ -83,6 +83,7 @@ jobs:
           make test-dsp-error-handling
           make test-failure-simulation
           make test-dex-builder
+          make test-real-asr
       - name: Live audio capture blocks (Mic/USB-UAC2/BLE-IPC)
         run: make test-live-capture
       - name: Session store persistence + .cypher replay
