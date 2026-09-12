@@ -2,13 +2,29 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <stdexcept>
 
 namespace kaoss {
+namespace {
+
+// Modul-Index-Guard: Der Native/JNI-Build wirft (Testbarkeit), der
+// Realtime-/WASM-Build (KAOSS_NO_EXCEPTIONS) darf keine Exceptions haben.
+// Die C-ABI (kaoss_dsp_abi.cpp) klemmt Indizes vorher, dieser Pfad ist dort
+// unerreichbar.
+[[noreturn]] void invalid_kaoss_module() {
+#ifdef KAOSS_NO_EXCEPTIONS
+  std::abort();
+#else
+  throw std::out_of_range("Kaoss module index must be 0..3");
+#endif
+}
+
+}  // namespace
 
 void KaossQuadEngine::set_xy(std::size_t module, float x, float y) {
   if (module >= state_.x.size()) {
-    throw std::out_of_range("Kaoss module index must be 0..3");
+    invalid_kaoss_module();
   }
   if (!state_.frozen[module]) {
     state_.x[module] = std::clamp(x, 0.0F, 1.0F);
@@ -18,7 +34,7 @@ void KaossQuadEngine::set_xy(std::size_t module, float x, float y) {
 
 void KaossQuadEngine::freeze(std::size_t module, bool enabled) {
   if (module >= state_.frozen.size()) {
-    throw std::out_of_range("Kaoss module index must be 0..3");
+    invalid_kaoss_module();
   }
   state_.frozen[module] = enabled;
 }

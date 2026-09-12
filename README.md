@@ -179,7 +179,113 @@ make test-action-chain      # HTTP: 236 Checks (Guards, DSP, Determinismus, Proj
 make test-action-chain-ui   # Node: Browsermodul offline + gegen echten Server (89 Checks)
 make test-web-ui-chain      # Node: echtes app.js mit DOM-Stub gegen echten Server (93 Checks)
 make test-zero-cloud        # Socket-Monkeypatch: keine Nicht-Loopback-Ziele
+make test-live-capture      # echte Capture-Blöcke (Mic/USB-UAC2/BLE-IPC) in dsp.process
+make test-session-store     # Persistenz über App-Neustarts + .cypher-Replay (71 Checks)
+make test-sse               # SSE /api/events/stream: Push, Reconnect, Heartbeat
+make test-wasm-parity       # WASM == nativer C++-Build == Python-Spiegel (274 Checks)
+make test-ui                # Playwright/Chromium: 7 echte Browser-Specs
 ```
+
+## Live Capture, Session-Store, SSE, WASM-DSP & Browser-Tests (neu)
+
+Fünf Leitungen, die aus der deterministischen Demo eine fahrbare Live-Kette machen:
+
+### 1. Echte Audio-Capture-Blöcke (Mic / USB-UAC2 / BLE)
+
+`engines/audio_capture.py` liefert *Blöcke* statt Konstanten und wird von
+`dsp.process` benutzt, sobald kein Test-Signal explizit verlangt wird:
+
+| Backend | Quelle | `real_capture` |
+|---|---|---|
+| `alsa` | `/dev/snd` über `arecord` (internes Mic) | `true`, sobald die Karte streamt |
+| `usb_uac2` | dieselbe PCM-Route, Karte aus dem USB-Audio-Class-2-Scan | `true` |
+| `ipc_ble` / `ipc_uac2` / `ipc_mic` | Float32-Pipe auf Loopback (`dist/sockets/*.sock`, `KPCM`-Frames) für echte Clients – Android `UsbUac2Client.kt` / `BleCodecClient.kt` (LC3plus-decodiert) oder die Desktop-Mic-Bridge | `true` ab dem ersten Client-Block |
+| `file` | WAV/RAW aus `dist/captures/` | `false` (Regression/Doku) |
+| `fixture` | `dsp_chain.test_signal()` | `false` – ausdrücklich als Fixture markiert |
+
+Jedes DSP-Event trägt die Provenienz (`detail.capture`: Backend, Device, Frames,
+Peak, `real_capture`). Ohne Hardware und ohne Client lügt das System nicht: es
+rechnet die Fixture und sagt das. Explizite Steuerung:
+
+```bash
+curl -X POST localhost:8080/api/audio/capture -d '{"mode":"auto"}'            # Route öffnen
+curl -X POST localhost:8080/api/audio/capture -d '{"frames":128}'             # echten Block ziehen
+curl -X POST localhost:8080/api/action -d '{"action":"dsp.process","frames":128,"source":"capture"}'
+curl localhost:8080/api/audio/capture                                         # Status + Backend-Probe
+```
+
+`make test-live-capture` startet dafür einen eigenen Client-Prozess, der PCM in
+die Pipe schiebt, und prüft Provenienz, Block-Unterschiede und Limiter-Vertrag.
+
+### 2. Ketten-Persistenz über App-Neustarts
+
+`session.export` schreibt `dist/sessions/<checksum>.cypher.json` **und**
+`dist/sessions/latest.cypher.json`. Beim nächsten Start liest der Server den
+Store und meldet die letzte Sitzung (Preset, BPM, Input, Kettenlänge, Checksum)
+in `state.restored`, im Boot-Event und unter `GET /api/session/latest` –
+der frische Lauf bleibt dabei deterministisch. Explizit weiterfahren:
+
+```bash
+curl -X POST localhost:8080/api/session/restore   # State der letzten Sitzung importieren
+curl localhost:8080/api/sessions                  # Inventar des Session-Stores
+python3 app.py --restore                          # schon beim Boot importieren
+python3 app.py --no-restore                       # Store gar nicht lesen
+```
+
+### 3. Streaming-Events (SSE) zusätzlich zu Polling
+
+`GET /api/events/stream` ist ein echter `text/event-stream`: `hello`-Handshake,
+Backlog ab `?since=`/`Last-Event-ID`, danach jedes Ketten-Event sofort
+(`event: chain`, `id:` = Seq), Heartbeat-Kommentare, sauberes `event: done` bei
+`?max=N`. Polling (`/api/events`) bleibt als Fallback und liest aus demselben
+Hub (`engines/event_stream.py`) – eine Quelle, kein Drift. Die UI hängt mit
+`EventSource` daran (`#stream-state`). `make test-sse` misst Push-Latenz,
+Reconnect und Abonnenten-Leaks.
+
+### 4. WASM-Build des C++-DSP-Kerns
+
+```bash
+make wasm              # dist/wasm/kaoss_dsp.wasm  (emcc | zig | clang+wasm-ld)
+make test-wasm-parity  # WASM == nativer C++-Build == Python-Spiegel == Browser-JS
+```
+
+`android/app/src/main/cpp/kaoss_dsp_abi.cpp` ist die stabile C-ABI über dem Kern
+(Limiter, Transient, 808, Kaoss Quad) und wird **zweimal** gebaut: als
+WebAssembly für den Browser und als natives Binary für den Referenzlauf.
+`web/src/dsp-core.js` lädt das Modul (inkl. WASI-Stub-Imports) und fällt auf
+einen identisch rechnenden JS-Spiegel zurück, wenn kein `.wasm` gebaut wurde;
+die UI zeigt den aktiven Kern (`#dsp-core-state`), der Server liefert das Modul
+unter `/wasm/kaoss_dsp.wasm` und den Status unter `/api/wasm`.
+
+### 5. Playwright-UI-Tests
+
+```bash
+make test-ui-install   # npm ci + Chromium
+make test-ui           # echte Browser-Tests (7 Specs)
+make test-ui-list      # Spec-Discovery ohne Browser (läuft überall)
+```
+
+`tests/ui/chain.spec.mjs` fährt die Kette in Chromium: Boot, vollständige Kette,
+SSE-Live-Events, Capture-Panel, Session-Store/Replay, echtes XY-Pad-Pointer-Event
+und der `BLOCKED`-Guard. Der DOM-Stub-Harness (`make test-web-ui-chain`) bleibt
+als schnelle, browserunabhängige Stufe erhalten.
+
+### Ketten-Replay aus `.cypher`
+
+Jedes Event speichert jetzt seine Parameter (ohne PCM-Blobs), damit Replay die
+*tatsächliche* Interaktion wiederholt und nicht nur Aktionsnamen:
+
+```bash
+curl -X POST localhost:8080/api/session/replay -d '{"path":"dist/sessions/latest.cypher.json"}'
+python3 engines/session_engine.py --replay dist/sessions/latest.cypher.json
+python3 engines/session_engine.py --list-sessions
+make replay-latest
+```
+
+Der Report weist `params_restored`, `steps`, `blocked` und `checksum_match`
+aus – ein Replay der kanonischen Kette liefert denselben `.cypher`-Hash wie das
+Original. Exporte ohne `params` (Alt-Format) laufen weiter und werden als
+`params_restored: false` gekennzeichnet.
 
 ## Kaoss Quad Console & Vault
 

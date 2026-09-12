@@ -21,6 +21,7 @@ INDEX = ROOT / "web/index.html"
 APP = ROOT / "web/src/app.js"
 ENGINE = ROOT / "web/src/audio-engine.js"
 CHAIN_JS = ROOT / "web/src/action-chain.js"
+DSP_CORE_JS = ROOT / "web/src/dsp-core.js"
 SW = ROOT / "web/sw.js"
 
 sys.path.insert(0, str(ROOT / "engines"))
@@ -86,6 +87,14 @@ REQUIRED_IDS = {
     "transcribe-output",
     "xy-pad",
     "xy-readout",
+    # SSE, echte Capture-Blöcke, Session-Store, WASM-DSP-Kern
+    "stream-state",
+    "capture-state",
+    "capture-open",
+    "capture-pull",
+    "session-latest",
+    "restore-session",
+    "dsp-core-state",
 }
 REQUIRED_ENGINE_TOKENS = {
     "class WebAudioCypherEngine",
@@ -124,7 +133,31 @@ REQUIRED_APP_TOKENS = {
     "/api/action",
     "/api/state",
     "__KAOSS_CHAIN__",
+    # neue Leitungen
+    "from './dsp-core.js'",
+    "connectEventStream",
+    "/api/events/stream",
+    "EventSource",
+    "refreshCapture",
+    "/api/audio/capture",
+    "loadSessionStore",
+    "restoreLatestSession",
+    "/api/session/restore",
+    "/api/session/latest",
+    "loadKaossDsp",
+    "initDspCore",
 }
+REQUIRED_DSP_CORE_TOKENS = {
+    "export async function loadKaossDsp",
+    "export class KaossDspWasm",
+    "export class KaossDspJs",
+    "export function wasiStubImports",
+    "kaoss_quad_process",
+    "kaoss_dsp_brickwall_buffer",
+    "kaoss_dsp_detect_transient",
+    "LIMITER_DBFS = -3.2",
+}
+
 REQUIRED_CHAIN_JS_TOKENS = {
     "export const ACTION_CATALOGUE",
     "export const FULL_CHAIN_SCRIPT",
@@ -153,19 +186,23 @@ def main() -> int:
     app = APP.read_text(encoding="utf-8")
     engine = ENGINE.read_text(encoding="utf-8")
     chain_js = CHAIN_JS.read_text(encoding="utf-8")
+    dsp_core = DSP_CORE_JS.read_text(encoding="utf-8")
     sw = SW.read_text(encoding="utf-8")
 
     missing_ids = sorted(item for item in REQUIRED_IDS if f'id="{item}"' not in index)
     missing_engine = sorted(item for item in REQUIRED_ENGINE_TOKENS if item not in engine)
     missing_app = sorted(item for item in REQUIRED_APP_TOKENS if item not in app)
     missing_chain = sorted(item for item in REQUIRED_CHAIN_JS_TOKENS if item not in chain_js)
-    if missing_ids or missing_engine or missing_app or missing_chain:
+    missing_dsp = sorted(item for item in REQUIRED_DSP_CORE_TOKENS if item not in dsp_core)
+    if missing_ids or missing_engine or missing_app or missing_chain or missing_dsp:
         raise SystemExit(
-            f"missing ids={missing_ids} engine={missing_engine} app={missing_app} chain={missing_chain}"
+            f"missing ids={missing_ids} engine={missing_engine} app={missing_app} "
+            f"chain={missing_chain} dsp_core={missing_dsp}"
         )
 
-    if "./src/action-chain.js" not in sw:
-        raise SystemExit("service worker does not cache the action chain module (offline PWA broken)")
+    for asset in ("./src/action-chain.js", "./src/dsp-core.js"):
+        if asset not in sw:
+            raise SystemExit(f"service worker does not cache {asset} (offline PWA broken)")
 
     # Parität Browser-Modul <-> Server-Engine
     catalogue_section = slice_between(chain_js, "export const ACTION_CATALOGUE", "export const ACTION_BY_NAME")
@@ -198,7 +235,8 @@ def main() -> int:
 
     print(
         "web functional audio/device/rhyme contract declared // "
-        f"action chain parity: {len(py_catalogue)} actions, {len(py_script)} chain steps, {len(py_ports)} engine ports"
+        f"action chain parity: {len(py_catalogue)} actions, {len(py_script)} chain steps, {len(py_ports)} engine ports // "
+        f"sse+capture+session+wasm tokens: {len(REQUIRED_APP_TOKENS)} app, {len(REQUIRED_DSP_CORE_TOKENS)} dsp-core"
     )
     return 0
 

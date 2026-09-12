@@ -84,7 +84,11 @@
         </select>
         <button id="apply-preset" type="button">PRESET LADEN</button>
         <button id="export-session" type="button">.CYPHER EXPORT</button>
+        <button id="import-session" type="button" class="ghost">.CYPHER REPLAY</button>
+        <button id="restore-session" type="button" class="ghost">LETZTE SITZUNG LADEN</button>
+        <output id="session-latest">SESSION: –</output>
         <output id="vault-state">VAULT: READY</output>
+        <output id="io-error" hidden>I/O OK</output>
       </div>
       <div class="fx-grid" id="fx-grid">
         <button class="freeze" data-module="0" type="button">FX1 LOOPER<br><span>FREEZE OFF</span></button>
@@ -112,6 +116,12 @@
         </select>
         <output id="audio-state">AUDIO: STANDBY</output>
       </div>
+      <div class="engine-controls">
+        <button id="capture-open" type="button" class="ghost">CAPTURE ÖFFNEN</button>
+        <button id="capture-pull" type="button" class="ghost">CAPTURE-BLOCK ZIEHEN</button>
+        <output id="capture-state">CAPTURE: STANDBY (Mic/USB/BLE)</output>
+        <output id="dsp-core-state">DSP: –</output>
+      </div>
       <div class="meter-wrap">
         <div class="meter-bar"><span id="meter-fill"></span></div>
         <output id="meter-readout">PEAK: -120 dBFS</output>
@@ -134,6 +144,7 @@
         <button id="chain-reset" type="button" class="ghost">KETTE RESET</button>
         <label class="toggle" for="chain-strict"><input id="chain-strict" type="checkbox" checked /> strict (Reihenfolge erzwingen)</label>
         <output id="chain-state">CHAIN: IDLE</output>
+        <output id="stream-state">STREAM: OFF</output>
       </div>
       <div class="chain-grid">
         <article><span>SCHRITTE</span><strong id="chain-length">0</strong><small id="chain-seq">seq 0</small></article>

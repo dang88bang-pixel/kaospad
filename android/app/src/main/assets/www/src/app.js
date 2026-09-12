@@ -1,4 +1,5 @@
 import { WebAudioCypherEngine } from './audio-engine.js';
+import { loadKaossDsp } from './dsp-core.js';
 import {
   ACTION_BY_NAME,
   ENGINES,
@@ -44,6 +45,20 @@ const DAEMONS = [
   { port: 8085, name: 'offline-whisper-daemon', rule: 'Text + Reimketten Lookup', protocol: 'IPC UTF-8' },
 ];
 
+if (globalThis.KaossNativeBridge && !globalThis.__KAOSS_NATIVE_BRIDGE__) {
+  const native = globalThis.KaossNativeBridge;
+  globalThis.__KAOSS_NATIVE_BRIDGE__ = {
+    portStatus(port) {
+      const raw = native.portStatus(port);
+      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    },
+    loadPortForAction(action) {
+      if (!native.loadPortForAction) return null;
+      const raw = native.loadPortForAction(action);
+      return typeof raw === 'string' ? JSON.parse(raw) : raw;
+    },
+  };
+}
 const bridge = globalThis.__KAOSS_NATIVE_BRIDGE__;
 const bridgeMode = document.querySelector('#bridge-mode');
 const portGrid = document.querySelector('#port-grid');
@@ -93,15 +108,19 @@ async function readPortStatus(spec) {
 }
 
 function renderPortCard(spec, status) {
-  const tone = status.status === 'READY' || status.status === 'LOCKED' ? 'locked' : 'reserved';
+  const tone = status.status === 'ACTIVE' || status.status === 'LOADED' || status.status === 'LOCKED' || status.status === 'READY'
+    ? 'locked'
+    : 'reserved';
+  const active = status.status === 'ACTIVE' ? ' active' : '';
   const hits = status.chain_hits ? ` // ${status.chain_hits} chain hits` : '';
+  const task = status.loaded_action || spec.task || '';
   return `
-    <article class="port-card ${tone}">
+    <article class="port-card ${tone}${active}" data-port="${spec.port}">
       <div class="port-head"><span>:${spec.port}</span><b>${status.status}</b></div>
       <strong>${spec.name}</strong>
       <small>${spec.protocol}</small>
-      <p>${spec.rule}</p>
-      <code>${status.bind}:${spec.port} // ${status.latency}${hits}</code>
+      <p>${spec.rule}${task ? ` // ${task}` : ''}</p>
+      <code>${status.bind || '127.0.0.1'}:${spec.port} // ${status.latency || 'AUTO'}${hits}</code>
     </article>
   `;
 }
@@ -202,13 +221,48 @@ async function dispatchAction(action, params = {}) {
       server_state: payload.state,
     };
     chainState.offlineFallback = false;
-  } catch {
-    event = offlineDispatch(action, params);
-    chainState.offlineFallback = true;
+  } catch (error) {
+    if (location.protocol === 'file:') {
+      event = offlineDispatch(action, params);
+      chainState.offlineFallback = true;
+    } else {
+      event = {
+        seq: chainState.seq + 1,
+        action,
+        engine: request.engine,
+        port: request.port,
+        status: 'ERROR',
+        ok: false,
+        latency_ms: 0,
+        detail: { error: String(error.message || error), live: true },
+      };
+      chainState.offlineFallback = false;
+    }
   }
   chainState = chainReducer(chainState, event);
   renderChain(event);
+  await loadNativePortForTask(action, event);
   return event;
+}
+
+async function loadNativePortForTask(action, event) {
+  try {
+    if (bridge?.loadPortForAction) {
+      const loaded = bridge.loadPortForAction(action);
+      if (loaded?.port && bridgeMode) {
+        bridgeMode.value = `BRIDGE: NATIVE :${loaded.port} ${action}`;
+      }
+    } else {
+      await fetch(`/native-bridge/load?action=${encodeURIComponent(action)}`, { cache: 'no-store' });
+    }
+  } catch {
+    /* Port-Load darf die Kette nicht blockieren. */
+  }
+  cachedNativeStatuses = null;
+  refreshPortView();
+  if (event?.port && bridgeMode && !bridge?.loadPortForAction) {
+    bridgeMode.value = `BRIDGE: AUTO :${event.port} ${action}`;
+  }
 }
 
 async function runFullChain() {
@@ -658,9 +712,31 @@ async function loadLogs() {
 
 document.querySelector('#apply-preset').addEventListener('click', applyPreset);
 document.querySelector('#export-session').addEventListener('click', exportSession);
+document.querySelector('#import-session')?.addEventListener('click', async () => {
+  try {
+    const latest = await fetch('/api/session/latest', { cache: 'no-store' });
+    if (!latest.ok) throw new Error('keine persistierte Session');
+    const body = await latest.json();
+    const replay = await fetch('/api/session/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session: body.session || body }),
+    });
+    const payload = await replay.json();
+    vaultState.value = payload.ok
+      ? `VAULT: REPLAY ${payload.replay?.steps || 0} STEPS`
+      : `VAULT: REPLAY BLOCKED ${JSON.stringify(payload.replay?.blocked || [])}`;
+    hydrateFromServer();
+  } catch (error) {
+    vaultState.value = `VAULT: REPLAY ERROR ${error.message}`;
+  }
+});
 loadPresets().then(() => applyPreset({ dispatch: false }));
 loadLogs();
-setInterval(loadLogs, 6000);
+// Polling bleibt als Fallback; solange SSE liefert, muss es nicht nachladen.
+setInterval(() => {
+  if (Date.now() - lastStreamEventMs > 20000) loadLogs();
+}, 6000);
 
 // --------------------------------------------------------------------------- //
 // Boot: State von der Engine holen, damit die UI die laufende Kette zeigt
@@ -684,6 +760,205 @@ async function hydrateFromServer() {
 
 hydrateFromServer();
 
+// --------------------------------------------------------------------------- //
+// SSE: /api/events/stream pusht Ketten-Events live (Polling bleibt Fallback)
+// --------------------------------------------------------------------------- //
+const streamState = document.querySelector('#stream-state');
+let eventStream = null;
+let lastStreamEventMs = 0;
+
+function streamLabel(text) {
+  if (streamState) streamState.value = text;
+}
+
+function connectEventStream(since = chainState.seq || 0) {
+  if (typeof EventSource === 'undefined') {
+    streamLabel('STREAM: POLLING (kein EventSource)');
+    return null;
+  }
+  if (eventStream) eventStream.close();
+  const source = new EventSource(`/api/events/stream?since=${encodeURIComponent(since)}&heartbeat=15`);
+  eventStream = source;
+  source.addEventListener('hello', (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      lastStreamEventMs = Date.now();
+      streamLabel(`STREAM: LIVE // seq ${payload.last_seq} // hub ${payload.stream?.buffered ?? 0} events`);
+    } catch {
+      streamLabel('STREAM: LIVE');
+    }
+  });
+  source.addEventListener('chain', (event) => {
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    lastStreamEventMs = Date.now();
+    // dispatchAction() reduziert sein eigenes Event bereits – Doppelzählung vermeiden.
+    if ((payload.seq ?? 0) > (chainState.seq ?? 0)) {
+      chainState = chainReducer(chainState, { ...payload, detail: payload.detail_summary || {} });
+      renderChain(payload);
+    }
+    streamLabel(`STREAM: LIVE // seq ${payload.seq} ${payload.action} ${payload.status}`);
+  });
+  source.addEventListener('done', () => streamLabel('STREAM: DONE'));
+  source.onerror = () => {
+    streamLabel('STREAM: RECONNECT…');
+  };
+  return source;
+}
+
+function disconnectEventStream() {
+  if (eventStream) eventStream.close();
+  eventStream = null;
+  streamLabel('STREAM: OFF');
+}
+
+// --------------------------------------------------------------------------- //
+// Echte Capture-Blöcke (Mic / USB-UAC2 / BLE-IPC) statt Fixtures
+// --------------------------------------------------------------------------- //
+const captureState = document.querySelector('#capture-state');
+
+async function refreshCapture() {
+  try {
+    const response = await fetch('/api/audio/capture', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`capture http ${response.status}`);
+    const payload = await response.json();
+    const status = payload.status || {};
+    const backend = status.armed ? status.backend : 'none';
+    const live = status.real_capture ? 'LIVE' : status.armed ? 'ARMED (wartet)' : 'FIXTURE';
+    if (captureState) {
+      captureState.value = `CAPTURE: ${backend.toUpperCase()} ${live} // ${status.blocks || 0} blocks // route ${status.route}`;
+    }
+    return payload;
+  } catch (error) {
+    if (captureState) captureState.value = `CAPTURE: OFFLINE (${error.message})`;
+    return null;
+  }
+}
+
+async function openCapture() {
+  try {
+    const response = await fetch('/api/audio/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ mode: 'auto' }),
+    });
+    const payload = await response.json();
+    const info = payload.capture || {};
+    if (captureState) {
+      captureState.value = `CAPTURE: ${String(info.backend || 'none').toUpperCase()} ${info.real_capture ? 'LIVE' : 'FIXTURE'} // ${info.reason || info.transport || ''}`;
+    }
+    return payload;
+  } catch (error) {
+    if (captureState) captureState.value = `CAPTURE: ERROR ${error.message}`;
+    return null;
+  }
+}
+
+async function pullCaptureBlock(frames = 128) {
+  try {
+    const response = await fetch('/api/audio/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ frames }),
+    });
+    const payload = await response.json();
+    const block = payload.block;
+    if (captureState) {
+      captureState.value = block
+        ? `CAPTURE-BLOCK: ${block.backend} ${block.real_capture ? 'REAL' : 'FILE'} // ${block.frames}f @${block.sample_rate_hz}Hz peak ${block.peak_dbfs} dBFS`
+        : `CAPTURE-BLOCK: keiner (${payload.status?.backend || 'none'})`;
+    }
+    return payload;
+  } catch (error) {
+    if (captureState) captureState.value = `CAPTURE-BLOCK: ERROR ${error.message}`;
+    return null;
+  }
+}
+
+document.querySelector('#capture-open')?.addEventListener('click', openCapture);
+document.querySelector('#capture-pull')?.addEventListener('click', () => pullCaptureBlock(128));
+
+// --------------------------------------------------------------------------- //
+// Session-Store: letzte Sitzung anzeigen, importieren, erneut ausführen
+// --------------------------------------------------------------------------- //
+const sessionLatest = document.querySelector('#session-latest');
+
+async function loadSessionStore() {
+  try {
+    const response = await fetch('/api/session/latest', { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      if (sessionLatest) sessionLatest.value = 'SESSION: keine persistierte Kette';
+      return payload;
+    }
+    const session = payload.session || {};
+    if (sessionLatest) {
+      sessionLatest.value =
+        `SESSION: ${session.chain_length} Schritte // ${session.preset} // ${session.input} // ` +
+        `${String(session.checksum || '').slice(0, 12)}${payload.restored?.imported ? ' // IMPORTIERT' : ''}`;
+    }
+    return payload;
+  } catch (error) {
+    if (sessionLatest) sessionLatest.value = `SESSION: ERROR ${error.message}`;
+    return null;
+  }
+}
+
+async function restoreLatestSession() {
+  try {
+    const response = await fetch('/api/session/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json();
+    if (vaultState) {
+      vaultState.value = payload.ok
+        ? `VAULT: SITZUNG IMPORTIERT ${(payload.restored?.chain_length) || 0} Schritte`
+        : `VAULT: IMPORT FEHLGESCHLAGEN ${payload.error || ''}`;
+    }
+    await hydrateFromServer();
+    await loadSessionStore();
+    return payload;
+  } catch (error) {
+    if (vaultState) vaultState.value = `VAULT: IMPORT ERROR ${error.message}`;
+    return null;
+  }
+}
+
+document.querySelector('#restore-session')?.addEventListener('click', restoreLatestSession);
+
+// --------------------------------------------------------------------------- //
+// DSP-Kern: WebAssembly (C++) mit JS-Fallback – Browser rechnet wie Native
+// --------------------------------------------------------------------------- //
+const dspCoreState = document.querySelector('#dsp-core-state');
+let dspCore = null;
+
+async function initDspCore() {
+  dspCore = await loadKaossDsp({ url: '/wasm/kaoss_dsp.wasm' });
+  if (dspCoreState) {
+    dspCoreState.value =
+      dspCore.engine === 'wasm'
+        ? `DSP: WASM ABI ${dspCore.abi} // limiter ${dspCore.limiterDbfs} dBFS`
+        : `DSP: JS FALLBACK (${dspCore.loadError ? 'kein .wasm – make wasm' : 'ok'})`;
+  }
+  return dspCore;
+}
+
+// Boot der neuen Leitungen (nach deren Definition, TDZ-frei).
+connectEventStream();
+refreshCapture();
+loadSessionStore();
+initDspCore();
+setInterval(refreshCapture, 8000);
+
 // Debug-/Test-Hook: headless Kettenausführung aus der Browserkonsole oder Playwright.
 globalThis.__KAOSS_CHAIN__ = {
   state: () => chainState,
@@ -694,6 +969,14 @@ globalThis.__KAOSS_CHAIN__ = {
   catalogue: ACTION_BY_NAME,
   engines: ENGINES,
   missing: (action) => missingMilestones(chainState, action),
+  // neue Leitungen: SSE, echte Capture-Blöcke, Session-Store, WASM-DSP
+  stream: () => eventStream,
+  connectStream: connectEventStream,
+  disconnectStream: disconnectEventStream,
+  streamEvents: () => chainState.events,
+  capture: { refresh: refreshCapture, open: openCapture, pull: pullCaptureBlock },
+  sessions: { latest: loadSessionStore, restore: restoreLatestSession },
+  dspCore: () => dspCore,
 };
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');

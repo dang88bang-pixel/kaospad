@@ -1,4 +1,4 @@
-name: Audio DSP Benchmark
+name: Audio DSP Benchmark & Chain Verification
 
 on:
   pull_request:
@@ -8,6 +8,7 @@ on:
 
 jobs:
   benchmark:
+    name: Native C++ DSP (Latency, Limiter, Transient)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,3 +17,88 @@ jobs:
       - run: cmake --build build
       - run: ctest --test-dir build --output-on-failure
       - run: node tests/multi_avatar_sync_test.js
+
+  wasm-parity:
+    name: WASM DSP Core == Native == Python Mirror
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install wasm32 toolchain (ziglang wheel, offline-fähig)
+        run: python3 -m pip install --upgrade pip ziglang
+      - name: Build kaoss_dsp.wasm from the C++ core
+        run: ./scripts/build_wasm.sh
+      - name: Build native parity harness
+        run: |
+          mkdir -p build
+          g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -Iandroid/app/src/main/cpp \
+            tests/dsp_parity_harness.cpp \
+            android/app/src/main/cpp/audio_flinger_hook.cpp \
+            android/app/src/main/cpp/dsp_transient_splitter.cpp \
+            android/app/src/main/cpp/kaoss_quad_engine.cpp \
+            android/app/src/main/cpp/kaoss_dsp_abi.cpp \
+            -o build/dsp_parity_native
+      - name: Run 4-way DSP parity (wasm/native/python/browser-js)
+        run: node tests/dsp_wasm_parity_test.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kaoss-dsp-wasm
+          path: dist/wasm/
+
+  action-chain:
+    name: Offline Action & Interaction Chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Web/UI contract + DOM-stub harness
+        run: |
+          make test-web-contract
+          make test-action-chain-ui
+          make test-web-ui-chain
+      - name: One-App e2e + Kette + Zero-Cloud-Gate
+        run: |
+          make test-one-app
+          make test-action-chain
+          make test-zero-cloud
+          make test-chain-attributes
+          make test-client-hal
+          make test-offline-daemons
+      - name: Live audio capture blocks (Mic/USB-UAC2/BLE-IPC)
+        run: make test-live-capture
+      - name: Session store persistence + .cypher replay
+        run: make test-session-store
+      - name: SSE /api/events/stream
+        run: make test-sse
+
+  ui-browser:
+    name: Playwright Browser UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Build the WASM DSP core (UI badge + parity in the browser)
+        run: |
+          python3 -m pip install ziglang
+          ./scripts/build_wasm.sh
+      - name: Run Playwright UI chain tests
+        run: make test-ui
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-artifacts
+          path: test-results/

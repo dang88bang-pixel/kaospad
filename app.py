@@ -15,8 +15,10 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import select
 import socket
 import sys
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -39,8 +41,36 @@ from session_engine import (  # noqa: E402
     FULL_CHAIN_SCRIPT,
     PRESETS,
     SAMPLE_BANKS,
+    SESSION_STORE,
     build_engine,
 )
+
+WASM_DIR = ROOT / "dist" / "wasm"
+WASM_MODULE = WASM_DIR / "kaoss_dsp.wasm"
+
+
+def wasm_status() -> dict[str, object]:
+    """Status des C++-DSP-Kerns als WebAssembly (``make wasm``)."""
+    built = WASM_MODULE.is_file()
+    manifest_path = WASM_DIR / "build-manifest.json"
+    manifest: dict[str, object] = {}
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+    return {
+        "ok": True,
+        "built": built,
+        "module": str(WASM_MODULE.relative_to(ROOT)) if built else "",
+        "url": "/wasm/kaoss_dsp.wasm" if built else "",
+        "bytes": WASM_MODULE.stat().st_size if built else 0,
+        "core": "cpp kaoss_dsp (audio_flinger_hook + dsp_transient_splitter + kaoss_quad_engine)",
+        "parity": "browser == native == python mirror",
+        "build": manifest,
+        "offline": True,
+    }
+
 
 AUTO_PORT_CANDIDATES = (8080, 8086, 8088, 8090, 8099)
 DAEMONS = [
@@ -75,13 +105,15 @@ POST_ROUTES = {
 }
 
 ENDPOINT_LIST = [
-    "/api/status", "/api/runtime", "/api/state", "/api/actions", "/api/events",
+    "/api/status", "/api/runtime", "/api/state", "/api/actions", "/api/events", "/api/events/stream",
     "/api/action", "/api/chain/run", "/api/chain/reset",
     "/native-bridge/ports", "/native-bridge/load", "/devices/status", "/devices/select", "/permissions/check",
     "/api/presets", "/api/preset/apply", "/api/kaoss/xy", "/api/kaoss/freeze",
     "/api/dsp/process", "/api/pad/trigger", "/api/transport/record", "/api/loop/capture",
     "/api/transcribe", "/api/rhymes", "/api/avatar/mode", "/api/neurallift/generate",
-    "/api/session/export", "/mesh/default", "/dsp/transient", "/api/logs",
+    "/api/session/export", "/api/session/latest", "/api/session/restore", "/api/session/replay", "/api/sessions",
+    "/api/audio/capture", "/wasm/kaoss_dsp.wasm",
+    "/mesh/default", "/dsp/transient", "/api/logs",
 ]
 
 ENGINE = build_engine(DB_PATH)
@@ -167,6 +199,98 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ------------------------------------------------------------------ #
+    # Server-Sent Events: echte Push-Kette zusätzlich zum Polling
+    # ------------------------------------------------------------------ #
+    def sse_write(self, event: str, payload: object, event_id: str | None = None) -> None:
+        lines = []
+        if event_id is not None:
+            lines.append(f"id: {event_id}")
+        if event:
+            lines.append(f"event: {event}")
+        lines.append(f"data: {json.dumps(payload, ensure_ascii=False)}")
+        self.wfile.write(("\n".join(lines) + "\n\n").encode("utf-8"))
+        self.wfile.flush()
+
+    def stream_events(self, query: dict[str, list[str]]) -> None:
+        """Hält die Verbindung offen und pusht jedes Ketten-Event sofort."""
+        since = int(query.get("since", ["0"])[0] or 0)
+        last_event_id = self.headers.get("Last-Event-ID") or ""
+        if last_event_id.strip().isdigit():
+            since = max(since, int(last_event_id.strip()))
+        limit = max(1, min(500, int(query.get("limit", ["200"])[0] or 200)))
+        heartbeat_s = max(1.0, min(120.0, float(query.get("heartbeat", ["15"])[0] or 15)))
+        max_events = int(query.get("max", ["0"])[0] or 0)  # 0 = endlos (Browser-Default)
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+        subscription = ENGINE.hub.subscribe(since=since, limit=limit)
+        sent = 0
+        last_beat = time.monotonic()
+        try:
+            self.wfile.write(b"retry: 2000\n\n")
+            self.sse_write("hello", {
+                "ok": True,
+                "transport": "sse",
+                "since": subscription.cursor,
+                "last_seq": ENGINE.hub.last_seq(),
+                "stream": ENGINE.hub.stats(),
+                "polling_fallback": "/api/events",
+            })
+            while True:
+                events = subscription.wait(timeout=min(heartbeat_s, 0.5))
+                if events:
+                    for event in events:
+                        self.sse_write("chain", event, event_id=str(event.get("seq")))
+                        sent += 1
+                elif time.monotonic() - last_beat >= heartbeat_s:
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    last_beat = time.monotonic()
+                if self.client_gone():
+                    break  # EventSource getrennt -> Thread und Abo freigeben
+                if max_events and sent >= max_events:
+                    self.sse_write("done", {"ok": True, "sent": sent, "seq": subscription.cursor})
+                    break
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass  # Client hat getrennt – EventSource reconnectet mit Last-Event-ID
+        finally:
+            ENGINE.hub.unsubscribe(subscription)
+
+    def client_gone(self) -> bool:
+        """Erkennt ein getrenntes SSE-Client-Socket, ohne auf den nächsten Push zu warten."""
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            if not readable:
+                return False
+            return not self.connection.recv(1, socket.MSG_PEEK)
+        except (OSError, ValueError):
+            return True
+
+    # ------------------------------------------------------------------ #
+    # WASM-Asset des C++-DSP-Kerns
+    # ------------------------------------------------------------------ #
+    def send_wasm_asset(self, path: str) -> None:
+        name = Path(path).name
+        target = WASM_DIR / name
+        if not target.is_file() or target.parent.resolve() != WASM_DIR.resolve():
+            self.send_json({"ok": False, "error": f"wasm asset not built: {name}", "hint": "make wasm"}, code=404)
+            return
+        body = target.read_bytes()
+        content_type = "application/wasm" if name.endswith(".wasm") else mimetypes.guess_type(name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -262,6 +386,14 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                     "session_state": True,
                     "looper_freeze": True,
                     "transport_record": True,
+                    # neu: echte Capture-Blöcke, Ketten-Persistenz, SSE, Replay, WASM-DSP
+                    "live_audio_capture": True,
+                    "capture_backends": ["alsa", "usb_uac2", "ble_lc3_ipc", "file"],
+                    "session_persistence": True,
+                    "session_store": str(SESSION_STORE.relative_to(ROOT)),
+                    "cypher_replay": True,
+                    "sse_events": True,
+                    "wasm_dsp": wasm_status()["built"],
                 },
             })
             return
@@ -280,23 +412,65 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path in {"/api/events/stream", "/events/stream"}:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
-            since = int(query.get("since", ["0"])[0] or 0)
-            events = ENGINE.events_since(since)
-            chunk = f"data: {json.dumps({'ok': True, 'events': events}, ensure_ascii=False)}\n\n"
-            self.wfile.write(chunk.encode("utf-8"))
+            self.stream_events(query)
             return
 
         if path in {"/api/session/latest", "/session/latest"}:
             try:
                 payload = ENGINE.load_session()
-                self.send_json({"ok": True, "session": payload})
             except FileNotFoundError:
-                self.send_json({"ok": False, "error": "no persisted session"}, code=404)
+                self.send_json({
+                    "ok": False,
+                    "error": "no persisted session",
+                    "store": str(SESSION_STORE.relative_to(ROOT)),
+                    "restored": ENGINE.restored,
+                    "sessions": ENGINE.list_sessions(),
+                }, code=404)
+                return
+            self.send_json({
+                "ok": True,
+                "session": payload,
+                "restored": ENGINE.restored,
+                "store": str(SESSION_STORE.relative_to(ROOT)),
+                "sessions": ENGINE.list_sessions(),
+            })
+            return
+
+        if path in {"/api/sessions", "/session/store", "/api/session/store"}:
+            self.send_json({
+                "ok": True,
+                "store": str(SESSION_STORE.relative_to(ROOT)),
+                "sessions": ENGINE.list_sessions(),
+                "restored": ENGINE.restored,
+                "chain_seq": ENGINE.events[-1]["seq"] if ENGINE.events else 0,
+            })
+            return
+
+        if path in {"/api/audio/capture", "/audio/capture"}:
+            frames = int(query.get("frames", ["0"])[0] or 0)
+            block = None
+            pcm_preview: list[float] = []
+            if frames:
+                captured = ENGINE.capture_router.pull(frames, timeout_s=float(query.get("timeout", ["0.3"])[0] or 0.3))
+                if captured is not None:
+                    block = captured.provenance()
+                    pcm_preview = [round(value, 6) for value in captured.pcm[:8]]
+            self.send_json({
+                "ok": True,
+                "status": ENGINE.capture_router.status(),
+                "probe": ENGINE.capture_router.probe(),
+                "block": block,
+                "pcm_preview": pcm_preview,
+                "stats": dict(ENGINE.capture_stats),
+            })
+            return
+
+        if path in {"/api/wasm", "/wasm/status"}:
+            self.send_json(wasm_status())
+            return
+
+        if path.startswith("/wasm/"):
+            self.send_wasm_asset(path)
             return
 
         if path in {"/api/events", "/api/chain", "/events"}:
@@ -504,10 +678,16 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json(self.action_response(result))
             return
 
-        if path in {"/api/session/import", "/session/import"}:
-            payload = params.get("session") if isinstance(params.get("session"), dict) else params
-            report = ENGINE.replay_cypher(payload if isinstance(payload, dict) else {})
-            self.send_json({"ok": report["ok"], "replay": report})
+        if path in {"/api/session/import", "/session/import", "/api/session/replay", "/session/replay"}:
+            self.send_json(self.session_replay(params))
+            return
+
+        if path in {"/api/session/restore", "/session/restore"}:
+            self.send_json(self.session_restore(params))
+            return
+
+        if path in {"/api/audio/capture", "/audio/capture"}:
+            self.send_json(self.capture_control(params))
             return
 
         if path in {"/api/chain/run", "/chain/run"}:
@@ -543,6 +723,92 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         result = ENGINE.dispatch(action, params, strict=strict)
         load_native_port_for_action(action)
         self.send_json(self.action_response(result))
+
+    def session_restore(self, params: dict[str, object]) -> dict[str, object]:
+        """Persistierte Sitzung in den Live-State importieren (ohne Replay)."""
+        payload = params.get("session") if isinstance(params.get("session"), dict) else None
+        source = "inline"
+        if payload is None:
+            requested = str(params.get("path") or params.get("file") or "")
+            if requested:
+                target = Path(requested)
+                if not target.is_absolute():
+                    target = ROOT / target
+                if not target.is_file() or target.suffix != ".json":
+                    return {"ok": False, "error": f"session file not readable: {requested}"}
+                payload = ENGINE.load_session(target)
+                source = str(target.relative_to(ROOT))
+            else:
+                report = ENGINE.restore_from_store()
+                if report is None:
+                    return {"ok": False, "error": "no persisted session", "store": str(SESSION_STORE.relative_to(ROOT))}
+                return {"ok": bool(report.get("ok")), "source": report.get("source", ""), "restored": report, "state": ENGINE.state()}
+        report = ENGINE.restore_session(payload if isinstance(payload, dict) else {}, source=source)
+        return {"ok": bool(report.get("ok")), "source": source, "restored": report, "state": ENGINE.state()}
+
+    def session_replay(self, params: dict[str, object]) -> dict[str, object]:
+        """Ketten-Replay aus ``.cypher``: aus Pfad, Inline-Payload oder dem letzten Store-Eintrag."""
+        strict = bool(params.get("strict", True))
+        reset = bool(params.get("reset", True))
+        source = ""
+        payload = params.get("session") if isinstance(params.get("session"), dict) else None
+        if payload is not None:
+            source = "inline"
+        requested = str(params.get("path") or params.get("file") or "")
+        if payload is None and requested:
+            target = Path(requested)
+            if not target.is_absolute():
+                target = ROOT / target
+            try:
+                inside = target.resolve().is_relative_to(ROOT.resolve())
+            except AttributeError:  # Python < 3.9
+                inside = str(target.resolve()).startswith(str(ROOT.resolve()))
+            if not inside or target.suffix != ".json" or not target.is_file():
+                return {"ok": False, "error": f"session file not readable: {requested}", "store": str(SESSION_STORE.relative_to(ROOT))}
+            payload = ENGINE.load_session(target)
+            source = str(target.relative_to(ROOT))
+        if payload is None and isinstance(params.get("action_chain"), list):
+            payload = params
+            source = "inline"
+        if payload is None:
+            try:
+                payload = ENGINE.load_session()
+                source = str((SESSION_STORE / "latest.cypher.json").relative_to(ROOT))
+            except (FileNotFoundError, OSError):
+                return {"ok": False, "error": "no session payload and no persisted session", "store": str(SESSION_STORE.relative_to(ROOT))}
+        report = ENGINE.replay_cypher(payload if isinstance(payload, dict) else {}, strict=strict, reset=reset)
+        report.pop("results", None)
+        return {"ok": report["ok"], "source": source, "replay": report}
+
+    def capture_control(self, params: dict[str, object]) -> dict[str, object]:
+        """Echte Capture-Route öffnen/schließen und optional sofort einen Block ziehen."""
+        frames = int(params.get("frames") or 0)
+        if params.get("close") or params.get("open") is False:
+            ENGINE.capture_router.close()
+            ENGINE.capture.update({"armed": False, "backend": "none", "real_capture": False, "reason": "closed by request"})
+            return {"ok": True, "opened": False, "capture": dict(ENGINE.capture), "status": ENGINE.capture_router.status()}
+        info = ENGINE.open_capture(
+            mode=str(params.get("mode") or params.get("capture") or "auto"),
+            sample_rate_hz=params.get("sample_rate_hz"),
+            frames_per_buffer=params.get("frames_per_buffer"),
+            device=params.get("device"),
+            file_path=params.get("file"),
+        )
+        block = None
+        pcm_preview: list[float] = []
+        if frames:
+            captured = ENGINE.capture_router.pull(frames, timeout_s=float(params.get("timeout") or 0.4))
+            if captured is not None:
+                block = captured.provenance()
+                pcm_preview = [round(value, 6) for value in captured.pcm[:8]]
+        return {
+            "ok": True,
+            "opened": bool(info.get("opened")),
+            "capture": dict(ENGINE.capture),
+            "status": ENGINE.capture_router.status(),
+            "block": block,
+            "pcm_preview": pcm_preview,
+        }
 
     def action_response(self, result: dict[str, object]) -> dict[str, object]:
         code_status = result.get("status")
@@ -638,10 +904,30 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default="auto", help="numeric port, 0, or auto")
     parser.add_argument("--run-chain", action="store_true", help="execute the full action chain once at boot (demo/preview)")
+    parser.add_argument("--restore", action="store_true", help="persistierte Sitzung beim Start in den Live-State importieren")
+    parser.add_argument("--no-restore", action="store_true", help="Session-Store beim Start gar nicht lesen")
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost", "0.0.0.0"}:
         raise SystemExit("Refusing non-local bind host for zero-cloud app")
     ensure_database(DB_PATH)
+    if args.no_restore:
+        ENGINE.inspect_on_boot = False
+        ENGINE.restored = {"ok": False, "reason": "session store disabled by --no-restore", "source": "", "resumed": False}
+    elif args.restore:
+        ENGINE.restored = ENGINE.restore_from_store() or ENGINE.restored
+        if ENGINE.restored and ENGINE.restored.get("ok"):
+            print(
+                f"Sitzung importiert: {ENGINE.restored.get('chain_length')} Schritte aus "
+                f"{ENGINE.restored.get('source')} ({str(ENGINE.restored.get('checksum'))[:12]})",
+                flush=True,
+            )
+    elif ENGINE.restored and ENGINE.restored.get("ok"):
+        print(
+            f"Letzte Sitzung verfügbar: {ENGINE.restored.get('chain_length')} Schritte, "
+            f"preset={ENGINE.restored.get('preset')} ({str(ENGINE.restored.get('checksum'))[:12]}) "
+            f"-> GET /api/session/latest, POST /api/session/restore|replay",
+            flush=True,
+        )
     if args.run_chain:
         report = ENGINE.run_script()
         print(f"Action chain pre-run: {report['steps']} steps ok={report['ok']} blocked={report['blocked']}", flush=True)
