@@ -305,6 +305,41 @@ class KaossQuadChain:
         return out
 
 
+def _block_error_report(
+    pcm: Sequence[float],
+    chain: KaossQuadChain,
+    sample_rate_hz: float,
+    reason: str,
+) -> dict[str, object]:
+    """Fehlerhafter Block: vollständiger Report mit ``ok=False`` statt Exception."""
+    try:
+        frames = len(pcm)
+    except TypeError:
+        frames = 0
+    return {
+        "ok": False,
+        "error": reason,
+        "frames": frames,
+        "sample_rate_hz": sample_rate_hz,
+        "block_ms": 0.0,
+        "latency_ms": 0.0,
+        "roundtrip_ms": 0.0,
+        "route_locked": False,
+        "limiter_dbfs": LIMITER_THRESHOLD_DBFS,
+        "input_peak_dbfs": -120.0,
+        "input_rms_dbfs": -120.0,
+        "output_peak_dbfs": -120.0,
+        "output_rms_dbfs": -120.0,
+        "headroom_db": 0.0,
+        "transient": TransientEvent().as_dict(),
+        "kick808": False,
+        "snare": False,
+        "hat": False,
+        "chain": chain.state(),
+        "checksum": block_checksum([]),
+    }
+
+
 def process_block(
     pcm: Sequence[float],
     chain: KaossQuadChain,
@@ -312,6 +347,21 @@ def process_block(
     threshold_dbfs: float = LIMITER_THRESHOLD_DBFS,
 ) -> dict[str, object]:
     """Run one audio block through the full chain and report the contract."""
+    # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+    # Eingangsprüfung an der DSP-Grenze: Abtastrate 0 oder nicht-numerische
+    # Samples hätten vorher als ZeroDivisionError/TypeError die Aktionskette
+    # abgebrochen. Jetzt gibt es einen vollständigen Report mit ok=False.
+    try:
+        rate = float(sample_rate_hz)
+    except (TypeError, ValueError):
+        return _block_error_report(pcm, chain, 0.0, f"sample_rate_hz={sample_rate_hz!r} ist keine Zahl")
+    if rate <= 0.0:
+        return _block_error_report(pcm, chain, rate, f"sample_rate_hz={rate} muss > 0 sein")
+    try:
+        pcm = [float(value) for value in pcm]
+    except (TypeError, ValueError) as exc:
+        return _block_error_report(pcm, chain, rate, f"PCM enthält keine Zahlen: {type(exc).__name__}: {exc}")
+
     input_peak = peak_dbfs(pcm)
     transient = detect_mouth_transient(pcm, sample_rate_hz)
     processed = chain.process(pcm)
@@ -322,6 +372,8 @@ def process_block(
     limited = brickwall_soft_knee_buffer(processed, threshold_dbfs)
     frames = len(pcm)
     return {
+        "ok": True,
+        "error": "",
         "frames": frames,
         "sample_rate_hz": sample_rate_hz,
         "block_ms": round((frames / sample_rate_hz) * 1000.0, 3),

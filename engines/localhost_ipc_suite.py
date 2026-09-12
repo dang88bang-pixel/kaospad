@@ -44,6 +44,9 @@ from engine_service import mesh_payload  # noqa: E402
 # Retry mit Backoff + Circuit Breaker für jede lokale IPC-/Aktionsgrenze.
 from resilience import REGISTRY, RetryPolicy  # noqa: E402
 
+# FlatBuffers-Codec der KPCM-PCM-Pfade (Schema: proto/kaoss_pcm.fbs).
+import kpcm_flatbuffers  # noqa: E402
+
 ACTION_POLICY = RetryPolicy(attempts=2, base_delay_s=0.02, factor=2.0, max_delay_s=0.1, jitter=0.25, deadline_s=2.0)
 
 
@@ -311,15 +314,33 @@ ACTION_BY_PATH = {path: action for path, action in {
 
 
 class PCMHandler(socketserver.BaseRequestHandler):
+    """PCM-Leitung 8081: Handshake plus (seit Phase 3) KPCF-FlatBuffers-Frames."""
+
     def handle(self) -> None:
-        data = self.request.recv(64)
-        if data:
-            state = ENGINE.audio
-            self.request.sendall(
-                f"PCM_FLOAT32_READY sample_rate={int(state['sample_rate_hz'])} "
-                f"frames={state['frames_per_buffer']} roundtrip_ms={state['roundtrip_ms']} "
-                f"route=127.0.0.1:8081\n".encode("utf-8")
-            )
+        data = self.request.recv(1 << 16)
+        if not data:
+            return
+        state = ENGINE.audio
+        extra = ""
+        if data[:4] == kpcm_flatbuffers.FRAME_MAGIC:
+            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+            # FlatBuffers-PCM auf der TCP-Leitung: decodieren und die Kennzahlen
+            # zurückschicken, damit der Sender die Übertragung prüfen kann.
+            try:
+                block = kpcm_flatbuffers.decode_frame(data)
+                extra = (
+                    f" wire=KPCF fb_frames={int(block['frames'])}"
+                    f" fb_rate={int(block['sample_rate_hz'])}"
+                    f" fb_checksum={block['checksum']}"
+                    + ("" if block["ok"] else " fb_error=frames_mismatch")
+                )
+            except kpcm_flatbuffers.FlatBufferError as exc:
+                extra = f" wire=KPCF fb_error={str(exc)[:48].replace(' ', '_')}"
+        self.request.sendall(
+            f"PCM_FLOAT32_READY sample_rate={int(state['sample_rate_hz'])} "
+            f"frames={state['frames_per_buffer']} roundtrip_ms={state['roundtrip_ms']} "
+            f"route=127.0.0.1:8081{extra}\n".encode("utf-8")
+        )
 
 
 class AvatarHandler(socketserver.BaseRequestHandler):

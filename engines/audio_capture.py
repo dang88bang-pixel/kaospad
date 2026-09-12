@@ -47,6 +47,9 @@ if str(Path(__file__).resolve().parent) not in sys.path:
 # Retry + Circuit Breaker an der Audio-Hardware-Grenze.
 from resilience import REGISTRY, RetryPolicy  # noqa: E402
 
+# FlatBuffers-Codec des KPCM-PCM-Pfads (Schema: proto/kaoss_pcm.fbs).
+import kpcm_flatbuffers  # noqa: E402
+
 OPEN_BREAKER_PREFIX = "capture:open:"
 READ_BREAKER_PREFIX = "capture:read:"
 OPEN_POLICY = RetryPolicy(attempts=2, base_delay_s=0.02, factor=2.0, max_delay_s=0.1, jitter=0.25)
@@ -57,9 +60,13 @@ CAPTURE_DIR = ROOT / "dist" / "captures"
 
 # IPC-Frame-Protokoll der Float32-PCM-Pipe (127.0.0.1 / Unix-Socket):
 #   b"KPCM" | uint32 sample_rate_hz | uint32 frames | frames * float32 (LE)
+#   b"KPCF" | FlatBuffer `Kaoss.Ipc.PcmBlock` (proto/kaoss_pcm.fbs)
 #   b"KCTL" | UTF-8 JSON  (Meta: device, codec, client)
+# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3): FlatBuffers für den PCM-Pfad.
+# JSON bleibt ausschließlich Steuerkanal; beide PCM-Formate werden akzeptiert.
 PCM_MAGIC = b"KPCM"
 CTL_MAGIC = b"KCTL"
+FB_MAGIC = b"KPCF"
 HEADER = struct.Struct("<4sII")
 
 # Route (Device-Matrix) -> präferierter Capture-Backend.
@@ -98,6 +105,9 @@ class CaptureBlock:
     real: bool
     t_ms: float = field(default_factory=_now_ms)
     note: str = ""
+    # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3): Drahtformat des Blocks
+    # ("raw" = KPCM-Header, "flatbuffers" = KPCF/PcmBlock, "" = Fixture/Datei).
+    wire: str = ""
 
     def peak_dbfs(self) -> float:
         peak = max((abs(sample) for sample in self.pcm), default=0.0)
@@ -118,6 +128,7 @@ class CaptureBlock:
             "peak_dbfs": self.peak_dbfs(),
             "t_ms": self.t_ms,
             "note": self.note,
+            "wire": self.wire,
         }
 
 
@@ -318,6 +329,9 @@ class IpcCapture:
         self.sample_rate_hz = 48_000.0
         self.frames_read = 0
         self.datagrams = 0
+        self.fb_frames = 0
+        self.fb_errors = 0
+        self.last_wire = ""
         self.client: dict[str, object] = {}
         self.opened_at = 0.0
         self.lock = threading.Lock()
@@ -339,6 +353,9 @@ class IpcCapture:
         self.buffer = bytearray()
         self.frames_read = 0
         self.datagrams = 0
+        self.fb_frames = 0
+        self.fb_errors = 0
+        self.last_wire = ""
         return {
             "backend": self.backend,
             "device": device or str(self.path.relative_to(ROOT)),
@@ -372,11 +389,36 @@ class IpcCapture:
                 except json.JSONDecodeError:
                     self.client = {"raw": len(datagram)}
                 continue
+            if datagram[:4] == FB_MAGIC:
+                # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+                # FlatBuffers-Frame: Schema proto/kaoss_pcm.fbs, Codec ohne
+                # externe Abhängigkeit. Fehlerhafte Puffer werden gezählt und
+                # verworfen, statt die Pipe zu blockieren.
+                try:
+                    block = kpcm_flatbuffers.decode_frame(datagram)
+                except kpcm_flatbuffers.FlatBufferError as exc:
+                    self.fb_errors += 1
+                    self.error = f"flatbuffers frame: {exc}"
+                    continue
+                if not block["ok"]:
+                    self.fb_errors += 1
+                    self.error = (
+                        f"flatbuffers frame: frames={block['frames_declared']} "
+                        f"passt nicht zu {len(block['samples'])} Samples"
+                    )
+                    continue
+                self.fb_frames += 1
+                self.last_wire = "flatbuffers"
+                self.sample_rate_hz = float(block["sample_rate_hz"] or self.sample_rate_hz)
+                self.buffer.extend(struct.pack(f"<{len(block['samples'])}f", *block["samples"]))
+                self.datagrams += 1
+                continue
             if datagram[:4] != PCM_MAGIC or len(datagram) < HEADER.size:
                 continue
             _, rate, frames = HEADER.unpack(datagram[: HEADER.size])
             self.sample_rate_hz = float(rate)
             self.buffer.extend(datagram[HEADER.size : HEADER.size + frames * 4])
+            self.last_wire = "raw"
             self.datagrams += 1
         return True
 
@@ -402,6 +444,7 @@ class IpcCapture:
             device=str(self.client.get("device") or self.path.name),
             real=True,
             note=f"loopback ipc pipe // {self.client.get('codec') or self.client.get('client') or 'pcm'}",
+            wire=self.last_wire,
         )
 
     def close(self) -> None:
@@ -750,9 +793,31 @@ def pull_block(
     return fixture_block(fallback_signal, frames, sample_rate_hz)
 
 
-def encode_ipc_frame(pcm: Sequence[float], sample_rate_hz: float = 48_000.0) -> bytes:
-    """Baut einen KPCM-Datagramm-Frame (Client-Seite der Float32-Pipe)."""
+def encode_ipc_frame(
+    pcm: Sequence[float],
+    sample_rate_hz: float = 48_000.0,
+    *,
+    fmt: str = "raw",
+    seq: int = 0,
+    source: str = "client_pcm",
+    t_ms: float = 0.0,
+) -> bytes:
+    """Baut einen Frame für die Float32-Pipe (Client-Seite).
+
+    ``fmt="raw"``        -> ``b"KPCM"`` + Header + Float32 (bisheriges Format).
+    ``fmt="flatbuffers"``-> ``b"KPCF"`` + ``Kaoss.Ipc.PcmBlock`` (Phase 3).
+    """
     samples = [float(value) for value in pcm]
+    if fmt == "flatbuffers":
+        return kpcm_flatbuffers.encode_frame(
+            samples,
+            sample_rate_hz=int(sample_rate_hz),
+            seq=int(seq),
+            source=source,
+            t_ms=float(t_ms),
+        )
+    if fmt != "raw":
+        raise ValueError(f"unbekanntes PCM-Frame-Format: {fmt!r} (raw|flatbuffers)")
     header = struct.pack("<4sII", PCM_MAGIC, int(sample_rate_hz), len(samples))
     return header + struct.pack(f"<{len(samples)}f", *samples)
 

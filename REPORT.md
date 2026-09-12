@@ -16,8 +16,8 @@ Werkzeuge (reproduzierbar, keine Einmal-Greps):
 
 - [x] **Phase 1 — Audit:** 113 Dateien / 19.889 Zeilen inventarisiert. Ergebnis: **1 PLACEHOLDER, 3 STUB, 109 REAL**, 0 TODO/FIXME-Kommentarmarker (klassische `// TODO`-Marker: **null** im Repo), 41 Prosa-Marker in 20 Dateien, 77 Dummy-Rückgaben, 0 `NotImplementedError`, 0 unauflösbare lokale Imports. Artefakte: `docs/audit/INVENTAR.csv` (Zeile pro Datei mit Beleg), `docs/audit/GAP-MATRIX.csv` (462 Forderungen).
 - [x] **Phase 2 — Ersetzung:** **2 Dateien ersetzt** (P2-1 `glb.py`-Docstring, P2-2 `engine_service.py` als echter Mesh-Daemon) — nur die freigegebenen, API-kompatibel, mit `-- REAL-IMPLEMENTATION 2026-09-12` und Original in `backups/phase2/`. Folgekorrektur der davon abhängigen Zahlen in `session_engine.py`, `localhost_ipc_suite.py`, `app.py`. P2-3/P2-4/P2-5 bleiben ⛔ und sind unangetastet.
-- [x] **Phase 3 — Integration & Binding:** IPC, Persistenz und Timeouts waren bereits real; neu ist `engines/resilience.py` — **Retry mit exponentiellem Backoff + Jitter, Circuit Breaker (CLOSED/OPEN/HALF_OPEN), harte Deadline** — verdrahtet an drei realen Grenzen (ALSA-Probe, Capture-Backends, jede `/api/action`). Beleg: `resilience verified: 65 checks`. FlatBuffers für die PCM-Pfade: **noch offen** (TECH-DEBT).
-- [x] **Phase 4 — Funktionstest:** `make test` **exit 0** lokal, **26 Ergebniszeilen** (5 neue Suiten: resilience, watchdog, log-rotation, bug-report, engine-service). CI-Run `34713717145`: **4/4 Jobs grün**, Playwright **7 von 7 Specs** im echten Chromium.
+- [x] **Phase 3 — Integration & Binding:** IPC, Persistenz und Timeouts waren bereits real; neu sind (a) `engines/resilience.py` — **Retry mit exponentiellem Backoff + Jitter, Circuit Breaker (CLOSED/OPEN/HALF_OPEN), harte Deadline** — verdrahtet an drei realen Grenzen (ALSA-Probe, Capture-Backends, jede `/api/action`), Beleg `resilience verified: 65 checks`; und (b) **FlatBuffers für die PCM-Pfade** — Schema `proto/kaoss_pcm.fbs`, abhängigkeitfreier Codec `engines/kpcm_flatbuffers.py`, Rahmen `b"KPCF"` auf der Unix-Pipe und auf TCP 8081, Beleg `flatbuffers pcm verified: 60 checks` (inkl. Kreuzdecodierung gegen den offiziellen `flatc`-Codec in beide Richtungen); und (c) **Error-Handling an den restlichen Grenzen** — `dsp_chain.process_block()` meldet kaputte Abtastrate/Samples als vollständigen Report mit `ok=false`, `event_stream.py` verwirft fehlerhafte Events und zählt sie, Beleg `dsp/event error handling verified: 30 checks`.
+- [x] **Phase 4 — Funktionstest:** `make test` **exit 0** lokal, **28 Ergebniszeilen** (7 neue Suiten: resilience, watchdog, log-rotation, bug-report, engine-service, flatbuffers-pcm, dsp-error-handling). CI-Run `34713717145`: **4/4 Jobs grün**, Playwright **7 von 7 Specs** im echten Chromium.
 - [x] **Phase 5 — Fehlerresistenz:** alle drei Bausteine gebaut, jeder mit eigenem Test — **Watchdog** (`watchdog verified: 28 checks`, Neustart bei ≥ 5 s Stille, Restart-Limit → `degraded`), **Log-Rotation** (`log rotation verified: 25 checks`, harte Grenze `max_bytes × (backups+1)`), **Bug-Report-File** (`bug report verified: 42 checks`, Secret-Redaktion + deutsche Meldung ohne Stack). Graceful Degradation zusätzlich belegt (2 Pfade).
 
 ---
@@ -85,8 +85,8 @@ Nicht-Loopback-Bind wird verweigert.
 | Forderung | Status | Beleg |
 |---|---|---|
 | IPC 8080–8085 mit echten Sockets | ✅ REAL | `zero-cloud localhost IPC gate passed for ports 8080-8085`; zusätzlich Unix-Datagram-Pipes `KPCM/KCTL` für Capture-Clients (`live capture dsp ok: 40 checks // real blocks=1`) |
-| Protobuf/FlatBuffers für PCM | 🟡 offen | Vereinbarung: FlatBuffers für die KPCM-PCM-Pfade, JSON für Steuerkanäle. Bisher JSON/Text auf Loopback; Umsetzung + Paritätstest stehen aus (TECH-DEBT 1) |
-| JNI/USB/BT/Audio-Callback mit Error-Handling + Timeout | ✅ REAL | `engines/resilience.py` schützt die lokalen Grenzen: `local_audio_probe.py` (vorher 0 Timeouts, 0 `except`) läuft jetzt hinter Retry + Breaker `alsa_probe`; `audio_capture.py` öffnet Backends hinter `capture:open:<name>` und fängt `read_block`-Ausnahmen (`capture:read:<name>`), der Audio-Callback wirft nicht mehr durch |
+| Protobuf/FlatBuffers für PCM | ✅ REAL | Schema `proto/kaoss_pcm.fbs` (`Kaoss.Ipc.PcmBlock`), Codec `engines/kpcm_flatbuffers.py` **ohne externe Abhängigkeit**, Rahmen `b"KPCF"` + FlatBuffer. Akzeptiert auf der Unix-Datagram-Pipe (`audio_capture._drain`) und auf TCP 8081 (`PCMHandler`); JSON bleibt Steuerkanal (`KCTL`, `/api/*`). Test `flatbuffers pcm verified: 60 checks`: Roundtrip, Determinismus, 6 Fehlerfälle als `FlatBufferError`, echte Pipe (KPCF **und** KPCM, kaputte Frames zählen statt zu blockieren), SHA-256-Parität raw == FlatBuffers, plus `flatc`-Kreuzdecodierung in beide Richtungen. Ohne `flatc` meldet der Test die Referenzprüfung ehrlich als übersprungen (54 Checks) |
+| JNI/USB/BT/Audio-Callback mit Error-Handling + Timeout | ✅ REAL | `engines/resilience.py` schützt die lokalen Grenzen: `local_audio_probe.py` (vorher 0 Timeouts, 0 `except`) läuft jetzt hinter Retry + Breaker `alsa_probe`; `audio_capture.py` öffnet Backends hinter `capture:open:<name>` und fängt `read_block`-Ausnahmen (`capture:read:<name>`), der Audio-Callback wirft nicht mehr durch. Nachgezogen: `dsp_chain.process_block()` prüft Abtastrate/Samples und liefert bei kaputten Eingaben einen vollständigen Report mit `ok=false` statt `ZeroDivisionError`; `event_stream.py` verwirft fehlerhafte Events und meldet `errors`/`last_error` in `stats()`. Test: `dsp/event error handling verified: 30 checks` |
 | State-Machine persistent (kein In-Memory-Only) | ✅ REAL | `session persist + replay ok: 71 checks // store=dist/sessions checksum=0027d4f4a84c chain=23`; Reim-Matrix in SQLite |
 | Retry-Logik + Circuit-Breaker | ✅ REAL | `engines/resilience.py`: `RetryPolicy` (exponentieller Backoff, Jitter, absolute Deadline), `CircuitBreaker` (CLOSED → OPEN → HALF_OPEN, `failure_threshold`, `reset_timeout_s`, `half_open_max`), `call_with_timeout`, `ResilienceRegistry`. Verdrahtet: ALSA-Probe, Capture-Open/-Read, jede `/api/action` (`action:<name>`, sonst 500/503 statt hängender Verbindung), sichtbar über `GET /resilience` (8080). Test: `resilience verified: 65 checks` |
 
@@ -94,7 +94,7 @@ Nicht-Loopback-Bind wird verweigert.
 
 ## Phase 4 — Funktionstest
 
-`make test` → **exit 0** (letzter lokaler Lauf, 26 Ergebniszeilen). Auszug:
+`make test` → **exit 0** (letzter lokaler Lauf, 28 Ergebniszeilen). Auszug:
 
 ```text
 Limiter peak=-3.2 dBFS threshold=-3.2 dBFS · Transient kind=1 freq=52 latency_ms=1
@@ -103,6 +103,8 @@ resilience verified: 65 checks // retry+backoff // circuit breaker CLOSED/OPEN/H
 watchdog verified: 28 checks // Neustart nach >5 s Stille // Restart-Limit + degraded // Hintergrundschleufe
 log rotation verified: 25 checks // Grenze max_bytes*(backups+1) // JSON Lines // Schreibfehler ohne Crash
 bug report verified: 42 checks // JSON in dist/bug-reports // Secrets redigiert // sys+thread excepthook
+flatbuffers pcm verified: 60 checks // Schema proto/kaoss_pcm.fbs // KPCF-Frame auf echter Pipe // SHA-256-Parität raw==flatbuffers
+dsp/event error handling verified: 30 checks // ok=False statt Exception // Event-Fehler gezählt
 neurallift engine service verified: 33 checks // mesh 780v/1248t // 27080 B // inference=false
 zero-cloud localhost IPC gate passed for ports 8080-8085 (shared action chain)
 kaoss one-app e2e contract passed
@@ -157,11 +159,10 @@ Letzter **lesbarer** CI-Lauf: 5 von 7 Specs grün. Zwei Fehler, beide als echte 
 
 ## Verbleibende TECH-DEBT
 
-1. **FlatBuffers für die PCM-Pfade** (KPCM-Capture/Loopback-Pipes) — vereinbart, noch nicht umgesetzt; JSON bleibt für Steuerkanäle. Nötig: `.fbs`-Schema, Kodierung in `audio_capture.py`/`localhost_ipc_suite.py` und ein Paritätstest gegen die JSON-Referenz.
-2. `engines/event_stream.py`, `engines/dsp_chain.py`: weiterhin 0 `except`-Blöcke — Fehler laufen unkontrolliert nach oben (in `app.py` inzwischen vom Bug-Report-Hook aufgefangen, aber nicht lokal behandelt). `local_audio_probe.py` ist seit Phase 3 geschützt.
-3. `.github/workflows/multiplatform-ci-cd.yml` scheitert seit jeher in 0 s mit „workflow file issue" — **repo-weit und vorbestehend** (identisch auf `arena/01a090e3-kaospad`), nicht durch diese Arbeit verursacht.
-4. Zwei WASM-Bauwege (`dist/wasm/kaoss_dsp.wasm` via zig/ABI, `web/wasm/dsp_core.mjs` via emcc) — zusammenführen, sobald emcc verfügbar ist.
-5. `make test` bricht, wenn gleichzeitig ein Server auf `0.0.0.0` läuft (Zero-Cloud-Gate `offline_ipc_socket_test` verlangt Loopback-Bindung) — korrektes Verhalten, aber als Hinweis dokumentieren.
-6. 371 offene Checkboxen in `docs/FULL_IMPLEMENTATION_TODO.md` (siehe `docs/audit/GAP-MATRIX.csv`).
-7. Watchdog-Restarts sind in der One-App **logisch** (Rolle wird neu initialisiert, `logical_restart: true`), weil alle sechs Rollen in einem Prozess laufen. Echte Prozess-Respawns liefert `engines/watchdog.py` über den `restart`-Callback — im Multi-Daemon-Modus muss er noch mit `Popen` verdrahtet werden.
-8. `backups/phase2/` und `backups/phase3/` enthalten die Originale der ersetzten Dateien (Regel des Auftrags). Vor einem Release können sie aus dem Artefakt-Pfad ausgeschlossen werden.
+1. `.github/workflows/multiplatform-ci-cd.yml` scheitert seit jeher in 0 s mit „workflow file issue" — **repo-weit und vorbestehend** (identisch auf `arena/01a090e3-kaospad`), nicht durch diese Arbeit verursacht.
+2. Zwei WASM-Bauwege (`dist/wasm/kaoss_dsp.wasm` via zig/ABI, `web/wasm/dsp_core.mjs` via emcc) — zusammenführen, sobald emcc verfügbar ist.
+3. `make test` bricht, wenn gleichzeitig ein Server auf `0.0.0.0` läuft (Zero-Cloud-Gate `offline_ipc_socket_test` verlangt Loopback-Bindung) — korrektes Verhalten, aber als Hinweis dokumentieren.
+4. 371 offene Checkboxen in `docs/FULL_IMPLEMENTATION_TODO.md` (siehe `docs/audit/GAP-MATRIX.csv`).
+5. Watchdog-Restarts sind in der One-App **logisch** (Rolle wird neu initialisiert, `logical_restart: true`), weil alle sechs Rollen in einem Prozess laufen. Echte Prozess-Respawns liefert `engines/watchdog.py` über den `restart`-Callback — im Multi-Daemon-Modus muss er noch mit `Popen` verdrahtet werden.
+6. `backups/phase2/` und `backups/phase3/` enthalten die Originale der ersetzten Dateien (Regel des Auftrags). Vor einem Release können sie aus dem Artefakt-Pfad ausgeschlossen werden.
+7. `flatc` und das `flatbuffers`-Paket sind nur in der Sandbox/CI per `pip` verfügbar und werden dort **nicht** persistiert. Der Produkt-Codec (`engines/kpcm_flatbuffers.py`) ist deshalb bewusst abhängigkeitsfrei; die Referenz-Kreuzdecodierung läuft nur, wo beide Werkzeuge installiert sind (Workflow-Schritt „FlatBuffers reference toolchain").
