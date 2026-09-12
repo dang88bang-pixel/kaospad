@@ -81,6 +81,9 @@ jobs:
   ui-browser:
     name: Playwright Browser UI
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -96,7 +99,25 @@ jobs:
           python3 -m pip install ziglang
           ./scripts/build_wasm.sh
       - name: Run Playwright UI chain tests
-        run: make test-ui
+        run: |
+          set -o pipefail
+          make test-ui 2>&1 | tee /tmp/kaoss-playwright.log
+      # Job-Logs/Artefakte liegen auf Blob-Hosts, die nicht jeder Client
+      # erreichen kann – deshalb schreibt der Job seine Fehler selbst in den PR.
+      - name: Report Playwright failures to the pull request
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          {
+            echo '### Playwright UI (Chromium) – Fehlerdetails'
+            echo
+            echo '```text'
+            grep -vE "^\s*(at |╔|║|╚)" /tmp/kaoss-playwright.log | tail -n 90
+            echo '```'
+          } > /tmp/kaoss-playwright-report.md
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "$GITHUB_REPOSITORY" --body-file /tmp/kaoss-playwright-report.md
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
