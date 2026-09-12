@@ -3,6 +3,9 @@ name: Android signed APK (CI/CD + GitHub Release)
 # CD-Kette: Gradle assembleRelease (echter ART/Native-Build) -> apksigner v1+v2+v3
 # -> Guard gegen Platzhalter -> GitHub Release (gh CLI) -> APK ins Repo (releases/android/).
 # Signatur-Identitaet, Prioritaet: Repo-Secret > Actions-Cache > ephemeraerer CI-Key.
+# Diagnose: alle Bau-/Pruef-Logs landen in dist-release/*.log; bei Fehler wird der
+# relevante Ausschnitt als ::error-Annotation zurueckgemeldet (Log-Download ueber
+# Azure Blob ist aus manchen Netzen blockiert, Annotationen sind es nicht).
 
 on:
   workflow_dispatch:
@@ -138,7 +141,7 @@ jobs:
           KAOSS_SECRET_KEY_PASSWORD: ${{ secrets.KAOSS_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          mkdir -p signing-cache
+          mkdir -p signing-cache dist-release
           KS="${GITHUB_WORKSPACE}/signing-cache/kaoss-release.p12"
           ENVF="${KS}.env"
           ALIAS="${KAOSS_SECRET_KEY_ALIAS:-kaoss}"
@@ -171,7 +174,7 @@ jobs:
 
           # Vorflug: Keystore muss mit JDK 17 lesbar sein, sonst scheitert Gradle undeutlich.
           keytool -list -v -keystore "${KS}" -storepass "${STORE_PASS}" > signing-cache/keytool-list.txt
-          grep -E "Alias name|SHA256:" signing-cache/keytool-list.txt | head -4
+          grep -E "Alias name|SHA256:" signing-cache/keytool-list.txt | head -4 | tee dist-release/keystore.log
 
           # Gradle liest die Credentials aus android/keystore.properties (gitignored, 0600).
           umask 077
@@ -197,49 +200,19 @@ jobs:
           gradle :app:assembleRelease --no-daemon --stacktrace --warning-mode=summary 2>&1 \
             | tee ../dist-release/gradle-assemble.log
 
-      - name: Fehlerdiagnose (Gradle-Log als Annotationen)
-        if: failure()
-        run: |
-          set -uo pipefail
-          # Log-Download ist aus manchen Netzen blockiert; Annotationen sind es nicht.
-          emit_lines() {
-            local line
-            while IFS= read -r line; do
-              [ -z "${line}" ] && continue
-              line="${line//'%'/'%25'}"
-              printf '::error title=Build-Log::%s\n' "${line:0:460}"
-            done <<< "$1"
-          }
-          for LOG in dist-release/gradle-assemble.log dist-release/gradle-bundle.log; do
-            [ -f "${LOG}" ] || continue
-            echo "===== ${LOG} ====="
-            FIRST="$(grep -nE "^e: |error:|\* What went wrong|Execution failed for task|ninja: build stopped|Lint found" "${LOG}" | head -1 | cut -d: -f1)"
-            if [ -n "${FIRST}" ]; then
-              START=$(( FIRST > 6 ? FIRST - 6 : 1 ))
-              CONTEXT="$(sed -n "${START},$(( FIRST + 45 ))p" "${LOG}")"
-            else
-              CONTEXT="$(tail -50 "${LOG}")"
-            fi
-            {
-              echo "### Gradle-Fehler aus \`${LOG}\`"
-              echo ""
-              echo '```'
-              printf '%s\n' "${CONTEXT}"
-              echo '```'
-            } >> "${GITHUB_STEP_SUMMARY}"
-            emit_lines "${CONTEXT}"
-          done
-
       - name: Explizit mit apksigner signieren (v1 + v2 + v3)
         run: |
           set -euo pipefail
-          APK="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
-          test -n "${APK}"
+          mkdir -p dist-release
+          exec > >(tee -a "${GITHUB_WORKSPACE}/dist-release/apksigner-sign.log") 2>&1
+          APK_RAW="$(ls android/app/build/outputs/apk/release/*.apk | head -1)"
+          test -n "${APK_RAW}"
           KS="$(sed -n 's/^storeFile=//p' android/keystore.properties)"
           ALIAS="$(sed -n 's/^keyAlias=//p' android/keystore.properties)"
           KAOSS_STORE_PASS="$(sed -n 's/^storePassword=//p' android/keystore.properties)"
           KAOSS_KEY_PASS="$(sed -n 's/^keyPassword=//p' android/keystore.properties)"
           export KAOSS_STORE_PASS KAOSS_KEY_PASS
+          ls -l android/app/build/outputs/apk/release/
           "${APKSIGNER}" sign \
             --ks "${KS}" \
             --ks-key-alias "${ALIAS}" \
@@ -248,8 +221,10 @@ jobs:
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
-            "${APK}"
-          echo "apksigner sign ok: ${APK}"
+            "${APK_RAW}"
+          echo "apksigner sign ok: ${APK_RAW}"
+          echo "--- ZIP-Eintraege nach dem Signieren (Dubletten-Check v1) ---"
+          unzip -l "${APK_RAW}" | awk '{print $4}' | grep -E "^(META-INF/|lib/|classes|resources|assets/www/index)" | sort | head -40
 
       - name: Release-Assets staging (Name, SHA-256)
         id: stage
@@ -284,23 +259,48 @@ jobs:
       - name: Signatur verifizieren und Platzhalter ablehnen
         run: |
           set -euo pipefail
+          mkdir -p dist-release
           APK="dist-release/${APK_NAME}"
-          "${ZIPALIGN}" -c -v 4 "${APK}" > dist-release/zipalign-4.log
-          echo "zipalign (4 Bytes): ok"
-          "${ZIPALIGN}" -c -P 16 -v 4 "${APK}" > dist-release/zipalign-16k.log 2>&1 \
-            && echo "zipalign (16 KB .so): ok" \
-            || echo "::warning::16-KB-Page-Alignment der .so nicht erfuellt (informationell fuer Android 15+)"
-          "${APKSIGNER}" verify --verbose --print-certs "${APK}" > dist-release/apksigner-report.txt
-          cat dist-release/apksigner-report.txt
-          "${APKSIGNER}" verify --print-certs-pem "${APK}" > dist-release/kaoss-ci-cert.pem
+          VERIFY_LOG="dist-release/verify.log"
+          : > "${VERIFY_LOG}"
+          log() { printf '%s\n' "$*" | tee -a "${VERIFY_LOG}"; }
+
+          log "=== [0/6] APK-Inhalt (Struktur-Uebersicht) ==="
+          unzip -l "${APK}" | awk '{print $1, $4}' | grep -E "META-INF/|lib/|classes.*dex|resources.arsc|assets/www/index" | sort -k2 | tee -a "${VERIFY_LOG}"
+
+          log "=== [1/6] zipalign -c -v 4 ${APK} ==="
+          "${ZIPALIGN}" -c -v 4 "${APK}" 2>&1 | tail -5 | tee -a "${VERIFY_LOG}"
+          log "zipalign 4-Byte: OK"
+
+          log "=== [2/6] zipalign -c -P 16 -v 4 (informationell, Android 15+) ==="
+          if "${ZIPALIGN}" -c -P 16 -v 4 "${APK}" > dist-release/zipalign-16k.log 2>&1; then
+            log "zipalign 16-KB-Page-Alignment: OK"
+          else
+            log "zipalign 16-KB-Page-Alignment: nicht erfuellt (informationell)"
+            tail -3 dist-release/zipalign-16k.log | tee -a "${VERIFY_LOG}" || true
+            echo "::warning::16-KB-Page-Alignment der .so nicht erfuellt (NDK r27+/AGP 8.5.1+ noetig)"
+          fi
+
+          log "=== [3/6] apksigner verify --verbose --print-certs ==="
+          "${APKSIGNER}" verify --verbose --print-certs "${APK}" 2>&1 \
+            | tee dist-release/apksigner-report.txt | tee -a "${VERIFY_LOG}"
+
+          log "=== [4/6] Signierzertifikat als PEM exportieren ==="
+          "${APKSIGNER}" verify --print-certs-pem "${APK}" > dist-release/kaoss-ci-cert.pem 2>>"${VERIFY_LOG}"
           grep -q "BEGIN CERTIFICATE" dist-release/kaoss-ci-cert.pem
+          log "PEM-Zertifikat geschrieben ($(wc -l < dist-release/kaoss-ci-cert.pem) Zeilen)"
+
+          log "=== [5/6] Guard scripts/verify_signed_apk.py ==="
           python3 scripts/verify_signed_apk.py "${APK}" \
             --abis armeabi-v7a,arm64-v8a,x86_64 \
             --min-size 500000 \
             --require-v1 \
             --apksigner-report dist-release/apksigner-report.txt \
-            --json dist-release/apk-verification.json
-          python3 scripts/verify_signed_apk.py --selftest
+            --json dist-release/apk-verification.json 2>&1 | tee -a "${VERIFY_LOG}"
+
+          log "=== [6/6] Guard-Selftest ==="
+          python3 scripts/verify_signed_apk.py --selftest 2>&1 | tee -a "${VERIFY_LOG}"
+          log "VERIFIKATION ABGESCHLOSSEN"
 
       - name: Zusaetzlich signiertes AAB bauen (Play, optional)
         if: github.event_name != 'workflow_dispatch' || inputs.build_aab
@@ -318,12 +318,14 @@ jobs:
       - name: AAB pruefen und staging
         if: steps.bundle.outcome == 'success'
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          exec > >(tee -a "${GITHUB_WORKSPACE}/dist-release/aab.log") 2>&1
           AAB_RAW="$(ls android/app/build/outputs/bundle/release/*.aab 2>/dev/null | head -1 || true)"
           if [ -z "${AAB_RAW}" ]; then echo "kein AAB erzeugt"; exit 0; fi
           AAB_NAME="KaossBeatboxStudio-v${VERSION_NAME}-${VERSION_CODE}-universal.aab"
           cp -f "${AAB_RAW}" "dist-release/${AAB_NAME}"
           jarsigner -verify -verbose:summary -certs "dist-release/${AAB_NAME}" > dist-release/aab-jarsigner.txt 2>&1 || true
+          cat dist-release/aab-jarsigner.txt
           if grep -qi "jar verified" dist-release/aab-jarsigner.txt; then
             echo "AAB signiert: ${AAB_NAME}"
             echo "aab_name=${AAB_NAME}" >> "${GITHUB_OUTPUT}"
@@ -388,7 +390,7 @@ jobs:
             echo "### Download (gh CLI)"
             echo ""
             echo '```bash'
-            echo "gh release download ${RELEASE_TAG:-apk-latest} --repo ${GITHUB_REPOSITORY} --pattern '*.apk' --clobber"
+            echo "gh release download ${RELEASE_TAG} --repo ${GITHUB_REPOSITORY} --pattern '*.apk' --clobber"
             echo '```'
             echo ""
             echo "### Installation"
@@ -398,7 +400,7 @@ jobs:
             echo '```'
             echo ""
             echo "Sideload: APK aufs Geraet kopieren und oeffnen (Quelle unbekannt erlauben)."
-            echo "Die App ist offline-first; Mikrofon-Berechtigung wird zur Laufzeit erteilt."
+            echo "Die App ist offline-first; die Mikrofon-Berechtigung wird zur Laufzeit erteilt."
             echo ""
             echo "### Pruefen"
             echo ""
@@ -427,6 +429,7 @@ jobs:
             dist-release/kaoss-ci-cert.pem
             dist-release/apksigner-report.txt
             dist-release/apk-verification.json
+            dist-release/verify.log
           if-no-files-found: error
           retention-days: 30
 
@@ -437,6 +440,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p dist-release
+          exec > >(tee -a "${GITHUB_WORKSPACE}/dist-release/publish.log") 2>&1
           TAG="${RELEASE_TAG}"
           if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
             TITLE="Kaoss Beatbox Studio ${TAG} - signierte APK"
@@ -478,16 +483,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          mkdir -p dist-release
+          exec > >(tee -a "${GITHUB_WORKSPACE}/dist-release/commit.log") 2>&1
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           mkdir -p releases/android
-          # Genau eine APK im Tree halten (ältere Builds entfernen).
+          # Genau eine APK im Tree halten (aeltere Builds entfernen).
           find releases/android -maxdepth 1 -name '*.apk' ! -name "${APK_NAME}" -delete
           cp -f "dist-release/${APK_NAME}" releases/android/
           cp -f dist-release/SHA256SUMS.txt dist-release/SIGNING.txt \
                 dist-release/kaoss-ci-cert.pem dist-release/apksigner-report.txt \
                 dist-release/apk-verification.json releases/android/
           git add releases/android
+          git status --short
           if git diff --cached --quiet; then
             echo "releases/android/ unveraendert - kein Commit noetig"
             exit 0
@@ -506,6 +514,43 @@ jobs:
           done
           echo "::error::APK-Commit konnte nicht nach ${BRANCH} gepusht werden"
           exit 1
+
+      - name: Fehlerdiagnose (Logs als Annotationen)
+        if: failure()
+        run: |
+          set -uo pipefail
+          emit_lines() {
+            local line
+            while IFS= read -r line; do
+              [ -z "${line}" ] && continue
+              line="${line//'%'/'%25'}"
+              printf '::error title=CI-Diagnose::%s\n' "${line:0:460}"
+            done <<< "$1"
+          }
+          mkdir -p dist-release
+          FOUND=0
+          for LOG in dist-release/gradle-assemble.log dist-release/apksigner-sign.log \
+                     dist-release/verify.log dist-release/aab.log dist-release/gradle-bundle.log \
+                     dist-release/publish.log dist-release/commit.log; do
+            [ -s "${LOG}" ] || continue
+            FOUND=1
+            FIRST="$(grep -nE "^e: |error:|\* What went wrong|Execution failed for task|ninja: build stopped|Lint found|^FAIL:|DOES NOT VERIFY|Traceback|::error" "${LOG}" | head -1 | cut -d: -f1)"
+            if [ -n "${FIRST}" ]; then
+              START=$(( FIRST > 6 ? FIRST - 6 : 1 ))
+              CONTEXT="$(sed -n "${START},$(( FIRST + 45 ))p" "${LOG}")"
+            else
+              CONTEXT="$(tail -50 "${LOG}")"
+            fi
+            {
+              echo "### Fehler-Kontext aus \`${LOG}\`"
+              echo ""
+              echo '```'
+              printf '%s\n' "${CONTEXT}"
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            emit_lines "${CONTEXT}"
+          done
+          [ "${FOUND}" = 1 ] || echo "::error title=CI-Diagnose::kein Log in dist-release/ gefunden"
 
       - name: Job-Zusammenfassung
         if: always()

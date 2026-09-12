@@ -65,8 +65,14 @@ def parse_apksigner_report(text: str) -> dict[str, object]:
     signers = re.search(r"Number of signers:\s*(\d+)", text)
     digest = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]{64})", text)
     dn = re.search(r"Signer #1 certificate DN:\s*(.+)", text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    # apksigner darf Warnungen VOR der Statuszeile ausgeben; "Verifies" muss
+    # irgendwo stehen und "DOES NOT VERIFY" nirgends.
+    verifies = ("Verifies" in lines) and not any(
+        line.startswith("DOES NOT VERIFY") for line in lines
+    )
     return {
-        "verifies": text.strip().splitlines()[0].strip() == "Verifies" if text.strip() else False,
+        "verifies": verifies,
         "v1": scheme(r"Verified using v1 scheme \(JAR signing\)"),
         "v2": scheme(r"Verified using v2 scheme \(APK Signature Scheme v2\)"),
         "v3": scheme(r"Verified using v3 scheme \(APK Signature Scheme v3\)"),
@@ -228,12 +234,19 @@ def _fixture_real_apk(path: Path) -> None:
         archive.writestr("META-INF/apk-sig-block.bin", APK_SIG_BLOCK_MAGIC, compress_type=zipfile.ZIP_STORED)
 
 
-def _fixture_report(path: Path, v1: bool = True, v2: bool = True, v3: bool = True) -> None:
+def _fixture_report(
+    path: Path,
+    v1: bool = True,
+    v2: bool = True,
+    v3: bool = True,
+    prefix: list[str] | None = None,
+) -> None:
+    body = ["Verifies", ""]
     path.write_text(
         "\n".join(
-            [
-                "Verifies",
-                "",
+            list(prefix or [])
+            + body
+            + [
                 f"Verified using v1 scheme (JAR signing): {str(v1).lower()}",
                 f"Verified using v2 scheme (APK Signature Scheme v2): {str(v2).lower()}",
                 f"Verified using v3 scheme (APK Signature Scheme v3): {str(v3).lower()}",
@@ -300,7 +313,28 @@ def selftest() -> int:
             print("FAIL: selftest - APK ohne v2-Signatur wurde akzeptiert")
             return 1
 
-        # Negativ 3: zu kleine Datei (Platzhalter)
+        # Robustheit: apksigner-Warnungen VOR der Statuszeile duerfen nicht tauschen.
+        warn_report = base / "warn-report.txt"
+        _fixture_report(warn_report, prefix=["WARNING: META-INF/foo.SF not needed", ""])
+        _reset()
+        if not verify_apk(good, report_path=warn_report, require_v1=True).get("valid"):
+            print("FAIL: selftest - Report mit fuehrender Warnung wurde abgelehnt")
+            return 1
+        expectations += 1
+
+        # Negativ 3: "DOES NOT VERIFY" muss abgelehnt werden.
+        broken_report = base / "broken-report.txt"
+        broken_report.write_text(
+            "DOES NOT VERIFY\n\nERROR: JAR signer CERT.RSA: signature not verifiable\n",
+            encoding="utf-8",
+        )
+        _reset()
+        if verify_apk(good, report_path=broken_report).get("valid"):
+            print("FAIL: selftest - 'DOES NOT VERIFY' wurde akzeptiert")
+            return 1
+        expectations += 1
+
+        # Negativ 4: zu kleine Datei (Platzhalter)
         tiny = base / "tiny.apk"
         tiny.write_bytes(b"PK\x03\x04" + b"\x00" * 64)
         _reset()
