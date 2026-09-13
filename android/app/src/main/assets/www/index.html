@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#111318" />
   <title>Korg Kaoss AI Beatbox Studio</title>
+  <link rel="icon" href="data:," />
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="stylesheet" href="./src/styles.css" />
 </head>
@@ -66,6 +67,19 @@
       </div>
       <div class="device-grid" id="device-grid"></div>
       <div class="permission-grid" id="permission-grid"></div>
+      <div class="io-lab" aria-label="Device Kalibrierung & Details">
+        <div class="lab-grid">
+          <label class="lab-range">Input Gain <input id="input-gain" type="range" min="0" max="150" value="78" /><output id="input-gain-out">0.78</output></label>
+          <label class="lab-range">Monitor Mix <input id="monitor-mix" type="range" min="0" max="100" value="50" /><output id="monitor-mix-out">50%</output></label>
+          <label class="lab-range">BT Kompensation <input id="bt-compensation" type="range" min="0" max="120" value="12" /><output id="bt-comp-output">12 ms</output></label>
+          <label class="lab-select">USB Sample-Rate <select id="usb-rate"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option><option value="88200">88.2 kHz</option><option value="96000">96 kHz</option></select></label>
+          <label class="toggle lab-toggle"><input id="mic-agc" type="checkbox" /> Mic AGC</label>
+          <label class="toggle lab-toggle"><input id="noise-suppression" type="checkbox" /> Noise Suppression</label>
+          <button id="calibrate" type="button">LOOPBACK KALIBRIEREN</button>
+          <output id="calibration-output">CAL: --</output>
+        </div>
+        <div class="device-detail" id="device-detail" aria-label="Device Details"></div>
+      </div>
     </section>
 
     <section class="kaoss-console" aria-labelledby="console-title">
@@ -84,13 +98,26 @@
         </select>
         <button id="apply-preset" type="button">PRESET LADEN</button>
         <button id="export-session" type="button">.CYPHER EXPORT</button>
+        <button id="import-session" type="button" class="ghost">.CYPHER REPLAY</button>
+        <button id="restore-session" type="button" class="ghost">LETZTE SITZUNG LADEN</button>
+        <output id="session-latest">SESSION: –</output>
         <output id="vault-state">VAULT: READY</output>
+        <output id="io-error" hidden>I/O OK</output>
       </div>
       <div class="fx-grid" id="fx-grid">
         <button class="freeze" data-module="0" type="button">FX1 LOOPER<br><span>FREEZE OFF</span></button>
         <button class="freeze" data-module="1" type="button">FX2 VINYL<br><span>FREEZE OFF</span></button>
         <button class="freeze" data-module="2" type="button">FX3 FILTER<br><span>FREEZE OFF</span></button>
         <button class="freeze" data-module="3" type="button">FX4 TAPE ECHO<br><span>FREEZE OFF</span></button>
+      </div>
+      <div class="quad-stage">
+        <div class="led-matrix" id="led-matrix" role="img" aria-label="8x8 Kaoss LED Matrix"></div>
+        <div class="quad-readouts">
+          <output id="quad-readout-0">FX1 LOOPER // --</output>
+          <output id="quad-readout-1">FX2 VINYL // --</output>
+          <output id="quad-readout-2">FX3 FILTER // --</output>
+          <output id="quad-readout-3">FX4 TAPE ECHO // --</output>
+        </div>
       </div>
       <div class="bank-grid" id="bank-grid"></div>
       <pre class="live-log" id="live-log">BOOT // waiting for one-app logs</pre>
@@ -111,6 +138,12 @@
           <option value="">Default Browser Input</option>
         </select>
         <output id="audio-state">AUDIO: STANDBY</output>
+      </div>
+      <div class="engine-controls">
+        <button id="capture-open" type="button" class="ghost">CAPTURE ÖFFNEN</button>
+        <button id="capture-pull" type="button" class="ghost">CAPTURE-BLOCK ZIEHEN</button>
+        <output id="capture-state">CAPTURE: STANDBY (Mic/USB/BLE)</output>
+        <output id="dsp-core-state">DSP: –</output>
       </div>
       <div class="meter-wrap">
         <div class="meter-bar"><span id="meter-fill"></span></div>
@@ -134,6 +167,7 @@
         <button id="chain-reset" type="button" class="ghost">KETTE RESET</button>
         <label class="toggle" for="chain-strict"><input id="chain-strict" type="checkbox" checked /> strict (Reihenfolge erzwingen)</label>
         <output id="chain-state">CHAIN: IDLE</output>
+        <output id="stream-state">STREAM: OFF</output>
       </div>
       <div class="chain-grid">
         <article><span>SCHRITTE</span><strong id="chain-length">0</strong><small id="chain-seq">seq 0</small></article>

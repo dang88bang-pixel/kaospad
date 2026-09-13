@@ -17,6 +17,7 @@ output { padding:12px 14px; border-radius:999px; border:1px solid #00f5d455; col
 .port-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:14px; }
 .port-card { min-height:190px; background:linear-gradient(180deg, #202631, #151922); }
 .port-card.locked { border-color:#30ff8a88; box-shadow:0 0 22px #30ff8a18 inset; }
+.port-card.active { border-color:var(--amber); box-shadow:0 0 28px #ff7a0044; }
 .port-card.reserved { border-color:#ffd16666; }
 .port-head { display:flex; justify-content:space-between; align-items:center; font-family:ui-monospace, monospace; }
 .port-head b { color:var(--ok); }
@@ -81,6 +82,44 @@ button.locked { background:linear-gradient(135deg,#30ff8a,#00f5d4); color:#04140
 @keyframes flashOk { 0% { box-shadow:0 0 0 0 #30ff8a88; } 100% { box-shadow:0 0 0 14px #30ff8a00; } }
 @keyframes flashBlocked { 0% { box-shadow:0 0 0 0 #ffd16688; } 100% { box-shadow:0 0 0 14px #ffd16600; } }
 .xy-readout { position:absolute; left:16px; bottom:16px; background:#080b0fcc; }
+
+/* ------------------------------------------------------------------ */
+/* SCREEN_14: Device-Kalibrierung & Detail-Drawer                       */
+/* ------------------------------------------------------------------ */
+.io-lab { display:grid; gap:16px; padding:16px; border-radius:20px; background:#12161d; border:1px solid #ffffff14; }
+.lab-grid { display:flex; flex-wrap:wrap; gap:14px; align-items:center; }
+.lab-range, .lab-select, .lab-toggle { display:flex; align-items:center; gap:8px; color:#d5deea; font-size:.82rem; flex-wrap:wrap; }
+.lab-range input { width:150px; accent-color:var(--amber); }
+.lab-range output { padding:4px 10px; font-size:.8rem; }
+.device-detail { display:grid; gap:12px; }
+.device-detail article { min-height:0; padding:14px; gap:6px; }
+.device-detail code { font-size:.76rem; }
+.device-card { cursor:pointer; }
+.device-card.locked { cursor:default; }
+.device-detail-empty { color:#9fb3c8; font-family:ui-monospace, monospace; font-size:.8rem; }
+
+/* ------------------------------------------------------------------ */
+/* SCREEN_29: 8x8 LED Matrix + Quad Readouts                            */
+/* ------------------------------------------------------------------ */
+.quad-stage { display:grid; grid-template-columns:auto 1fr; gap:18px; align-items:center; }
+.led-matrix { display:grid; grid-template-columns:repeat(8, 1fr); gap:4px; padding:14px; border-radius:18px; background:#05070a; border:1px solid #ffffff1f; box-shadow:0 0 30px #ff7a0018 inset; width:min(300px, 100%); aspect-ratio:1; }
+.led-matrix i { aspect-ratio:1; border-radius:4px; background:#141a22; border:1px solid #ffffff0a; transition:background .06s linear, box-shadow .06s linear; }
+.led-matrix i.on-amber { background:var(--amber); box-shadow:0 0 12px #ff7a00aa; }
+.led-matrix i.on-cyan { background:var(--cyan); box-shadow:0 0 12px #00f5d4aa; }
+.led-matrix i.on-green { background:var(--ok); box-shadow:0 0 12px #30ff8aaa; }
+.quad-readouts { display:grid; gap:10px; }
+.quad-readouts output { border-radius:14px; font-size:.8rem; }
+
+/* ------------------------------------------------------------------ */
+/* SCREEN_6: Daemon PID + Restart                                       */
+/* ------------------------------------------------------------------ */
+.port-card .port-restart { margin-top:10px; padding:8px 12px; font-size:.72rem; background:linear-gradient(135deg,#202631,#151922); color:var(--cyan); border:1px solid #00f5d455; box-shadow:none; }
+.port-card .port-head small { color:#9fb3c8; font-size:.7rem; }
+
+@media (max-width: 720px) {
+  .quad-stage { grid-template-columns:1fr; }
+  .led-matrix { width:min(240px, 100%); }
+}
 
 @media (max-width: 720px) {
   .shell { width:96vw; padding:18px 0; }

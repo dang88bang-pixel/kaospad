@@ -7,6 +7,8 @@ android/signing/*-key.pem
 android/signing/*.der
 target/
 node_modules/
+test-results/
+playwright-report/
 *.log
 .DS_Store
 

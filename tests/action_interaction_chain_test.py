@@ -329,7 +329,14 @@ def main() -> int:  # noqa: C901 - linearer Ketten-Test
         check("invalid avatar mode error", bad_mode["status"] == "ERROR", bad_mode)
 
         event = step("neurallift.generate", source="camera_frame_0001.jpg")
-        check("neurallift glb", str(event["detail"]["glb"]).startswith("neurallift_") and event["detail"]["glb"].endswith(".glb"), event["detail"])
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
+        # Der Dateiname leitet sich jetzt aus der SHA-256 des Meshes ab
+        # (`neurallift-<16 hex>.glb`), die Kennzahlen kommen aus der Datei.
+        nl = event["detail"]
+        check("neurallift glb", str(nl["glb"]).startswith("neurallift-") and nl["glb"].endswith(".glb"), nl)
+        check("neurallift mesh real", nl["vertices"] == 780 and nl["lod0_tris"] == 1248 and nl["rig_bones"] == 26, nl)
+        check("neurallift file on disk", (ROOT / nl["glb_path"]).read_bytes()[:4] == b"glTF", nl["glb_path"])
+        check("neurallift timing measured", 0 < nl["generate_ms"] < 1800.0, nl["generate_ms"])
         check("neurallift offline fallback", event["detail"]["fallback"] is True and event["detail"]["offline"] is True, event["detail"])
         check("neurallift engine", event["engine"] == "neurallift" and event["port"] == 8082, event)
 

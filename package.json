@@ -1,0 +1,16 @@
+{
+  "name": "kaoss-studio",
+  "version": "5.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Kaoss One App – offline zero-cloud Beatbox/AI-Studio. Node-Workspace für die echten Browser-UI-Tests (Playwright) und die WASM/DSP-Paritäts-Checks. Die PWA selbst bleibt ohne Build-Schritt lauffähig (web/package.json).",
+  "scripts": {
+    "test:wasm-parity": "node tests/dsp_wasm_parity_test.mjs",
+    "test:ui": "playwright test --config tests/ui/playwright.config.mjs",
+    "test:ui:install": "playwright install chromium",
+    "test:node": "node tests/dsp_wasm_parity_test.mjs && playwright test --config tests/ui/playwright.config.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

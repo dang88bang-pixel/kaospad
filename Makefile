@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal demo-chain run-app run-localhost-ipc clean release-bundle install-toolchains signed-apk test-signed-apk test-gradle-wrapper test-native-audio-bridge test-release-guard
+.PHONY: scaffold-all-platforms build wasm test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui test-ui-list test-ui-install test-native-audio-bridge test-release-guard test-gradle-wrapper demo-chain run-app run-localhost-ipc replay-latest clean release-bundle install-toolchains signed-apk test-signed-apk
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -17,7 +17,11 @@ build:
 		g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic -pthread -Iandroid/app/src/main/cpp tests/audio_input_processor_test.cpp $(DSP_CORE_SOURCES) -o build/audio_input_processor_test; \
 	fi
 
-test: test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
+# C++-DSP-Kern als WebAssembly (Browser rechnet wie Native): emcc | zig | clang
+wasm:
+	./scripts/build_wasm.sh
+
+test: test-native-dsp-latency test-resilience test-watchdog test-log-rotation test-bug-report test-engine-service test-dex-builder test-real-asr test-flatbuffers-pcm test-dsp-error-handling test-failure-simulation test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-wasm-cross-runtime test-ui-list test-ui test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms
@@ -33,6 +37,39 @@ test-release-guard:
 
 test-gradle-wrapper:
 	python3 scripts/verify_gradle_wrapper.py
+
+test-resilience:
+	python3 tests/resilience_test.py
+
+test-watchdog:
+	python3 tests/watchdog_test.py
+
+test-log-rotation:
+	python3 tests/log_rotation_test.py
+
+test-bug-report:
+	python3 tests/bug_report_test.py
+
+test-flatbuffers-pcm:
+	python3 tests/flatbuffers_pcm_test.py
+
+test-dsp-error-handling:
+	python3 tests/dsp_error_handling_test.py
+
+test-failure-simulation:
+	python3 tests/failure_simulation_test.py
+
+test-engine-service:
+	python3 tests/neurallift_engine_service_test.py
+
+test-dex-builder: signed-apk
+	python3 tests/dex_builder_test.py
+
+test-real-asr:
+	python3 tests/real_asr_test.py
+
+test-wasm-cross-runtime:
+	python3 tests/wasm_cross_runtime_test.py
 
 test-offline-daemons:
 	python3 tests/offline_ipc_socket_test.py
@@ -73,6 +110,35 @@ test-chain-attributes:
 test-client-hal:
 	python3 tests/client_hal_orchestrator_test.py
 
+# Echte Capture-Blöcke (Mic/USB-UAC2/BLE-IPC) in dsp.process
+test-live-capture:
+	python3 tests/live_capture_dsp_test.py
+
+# SSE /api/events/stream zusätzlich zum Polling (+ Reducer-Hygiene gegen
+# zusammengefasste Details)
+test-sse:
+	python3 tests/sse_events_stream_test.py
+	node tests/sse_reducer_hygiene_test.mjs
+
+# WASM == nativer C++-Build == Python-Spiegel == Browser-JS
+test-wasm-parity: wasm
+	node tests/dsp_wasm_parity_test.mjs
+
+# Playwright: Spec-Discovery läuft immer, der Browser-Lauf skipped ohne Chromium
+test-ui-list:
+	@if [ -d node_modules/@playwright/test ]; then \
+		./node_modules/.bin/playwright test --config tests/ui/playwright.config.mjs --list; \
+	else \
+		echo "SKIP test-ui-list: @playwright/test fehlt – 'npm ci' ausführen."; \
+	fi
+
+test-ui:
+	./scripts/run_ui_tests.sh
+
+test-ui-install:
+	npm ci
+	npm run test:ui:install
+
 signed-apk:
 	python3 scripts/build_signed_apk.py
 
@@ -88,9 +154,13 @@ run-app:
 run-localhost-ipc:
 	python3 engines/localhost_ipc_suite.py
 
+# Letzte persistierte .cypher-Kette erneut ausführen (Re-Import + Replay)
+replay-latest:
+	python3 engines/session_engine.py --replay dist/sessions/latest.cypher.json
+
 release-bundle: test
 	python3 engines/neurallift_360/scripts/download_weights.py --target=dist/offline-models
 	./scripts/build_appimage.sh
 
 clean:
-	rm -rf build dist
+	rm -rf build dist test-results playwright-report

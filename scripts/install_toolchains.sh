@@ -38,6 +38,13 @@ if [[ ! -d "$ROOT/android-ndk" ]]; then
   ln -sfn "$ROOT"/android-ndk-r26d "$ROOT/android-ndk"
 fi
 
+# wasm32-Toolchain für den Browser-DSP-Kern (make wasm / make test-wasm-parity)
+if ! command -v emcc >/dev/null 2>&1 && ! python3 -c "import ziglang" >/dev/null 2>&1; then
+  python3 -m pip install --break-system-packages ziglang >/dev/null 2>&1 \
+    || python3 -m pip install ziglang >/dev/null 2>&1 \
+    || echo "ziglang install fehlgeschlagen – make wasm braucht emcc, zig oder clang+wasm-ld"
+fi
+
 cat > "$ROOT/env.sh" <<EOF
 export JAVA_HOME="$ROOT/jdk"
 export ANDROID_NDK_HOME="$ROOT/android-ndk"

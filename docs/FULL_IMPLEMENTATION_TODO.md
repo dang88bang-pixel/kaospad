@@ -1,8 +1,8 @@
 # Vollständige GitHub-Dokumentation: Abarbeitbare TODO-Liste
 
 Projekt: **Korg Kaoss Pad & AI Beatbox Studio // NeuralLift-360 3D Dance Suite**  
-Dokumentstand: 2026-09-09  
-Branch: `arena/01a083de-kaospad`  
+Dokumentstand: 2026-09-12  
+Branch: `arena/01a08bf1-kaospad`  
 Ziel: Vollständige, ehrliche Liste aller vorhandenen, simulierten und noch fehlenden Teile, Anbindungen, Attribute, UI-Screens, Tests, Plattform-Builds und Release-Schritte.
 
 ---
@@ -105,14 +105,44 @@ Vollständig implementiert und getestet ist die durchgängige Kette
 | Zero-Cloud Socket-Monkeypatch-Gate | `tests/zero_cloud_socket_guard_test.py` | ✅ DONE |
 | Parität Browsermodul ↔ Server-Engine | `tests/web_functional_contract_test.py` | ✅ DONE |
 
-Offen innerhalb der Kette:
+Diese sechs Punkte waren offen und sind jetzt erledigt (Details in 1.4):
 
-- [ ] Echte Audio-Capture-Blöcke (Mic/USB/BLE) statt deterministischer Fixtures in `dsp.process` einspeisen.
+- [x] Echte Audio-Capture-Blöcke (Mic/USB-UAC2/BLE) statt deterministischer Fixtures in `dsp.process`.
 - [x] Ketten-Persistenz über App-Neustarts (Session-Store `dist/sessions/*.cypher.json` + `/api/session/latest`).
 - [x] Streaming-Events (SSE `/api/events/stream`) zusätzlich zu Polling für `/api/events`.
-- [ ] WASM-Build des C++-DSP-Kerns, damit Browser und Native identisch rechnen.
-- [ ] Playwright-basierte UI-Tests zusätzlich zum DOM-Stub-Harness.
-- [ ] Ketten-Replay aus `.cypher` (Re-Import und erneute Ausführung).
+- [x] WASM-Build des C++-DSP-Kerns, damit Browser und Native identisch rechnen.
+- [x] Playwright-basierte UI-Tests zusätzlich zum DOM-Stub-Harness.
+- [x] Ketten-Replay aus `.cypher` (Re-Import und erneute Ausführung).
+
+---
+
+## 1.4 Live Capture, Persistenz, SSE, WASM-DSP, Playwright, Replay (neu, 2026-09-12)
+
+| Baustein | Pfad | Status |
+|---|---|---|
+| Capture-Blöcke: ALSA/`arecord`, USB-UAC2-Karte, Loopback-PCM-Pipe (`KPCM`), WAV, Fixture – je Block mit Provenienz | `engines/audio_capture.py` | ✅ DONE |
+| `dsp.process` mit Quelle `auto/capture/client_pcm/fixture` + `detail.capture{backend,device,frames,peak,real_capture}` | `engines/session_engine.py` | ✅ DONE |
+| `/api/audio/capture` (Status+Probe, `open/auto/close/mode`, `frames=`) + UI-Panel | `app.py`, `web/index.html`, `web/src/app.js` | ✅ DONE |
+| Capture-Test mit eigenem Client-Prozess (40 Checks) | `tests/live_capture_dsp_test.py` | ✅ DONE |
+| Session-Store `dist/sessions/*.cypher.json` + `latest.cypher.json` + Inventar | `engines/session_engine.py` | ✅ DONE |
+| Boot inspiziert Store (`state.restored`, Boot-Event), Import explizit via `/api/session/restore`, `--restore`/`--no-restore` | `engines/session_engine.py`, `app.py` | ✅ DONE |
+| SSE `/api/events/stream` (hello, Backlog, `Last-Event-ID`, Heartbeat, `done`) aus demselben Hub wie `/api/events` | `engines/event_stream.py`, `app.py` | ✅ DONE |
+| SSE-Test (24 Checks: Push-Latenz, Reconnect, Abonnenten-Leaks) | `tests/sse_events_stream_test.py` | ✅ DONE |
+| Stabile C-ABI über dem DSP-Kern (Limiter, Transient, 808, Kaoss Quad) | `android/app/src/main/cpp/kaoss_dsp_abi.cpp` | ✅ DONE |
+| WASM-Build (`emcc` \| `zig` \| `clang+wasm-ld`, pip-Bootstrap) + Manifest + `/api/wasm`, `/wasm/<file>` | `scripts/build_wasm.sh`, `app.py` | ✅ DONE |
+| Browser-Lader mit WASI-Stub-Imports + identisch rechnender JS-Fallback + Badge | `web/src/dsp-core.js`, `web/src/app.js` | ✅ DONE |
+| 4-Wege-Parität WASM ↔ nativ ↔ Python ↔ Browser-JS (274 Checks, ≤ 5e-7) | `tests/dsp_parity_harness.cpp`, `tests/dsp_wasm_parity_test.mjs`, `scripts/dsp_parity_vectors.py` | ✅ DONE |
+| Playwright-Config + 7 Browser-Specs (Boot, Kette, SSE, Capture, Store/Replay, XY-Pointer, Guard) | `tests/ui/playwright.config.mjs`, `tests/ui/chain.spec.mjs` | ✅ DONE |
+| Parametertreues Replay (`.cypher` → Re-Import + erneute Ausführung, `checksum_match`) | `engines/session_engine.py`, `app.py` | ✅ DONE |
+| Make-Ziele `wasm`, `test-live-capture`, `test-session-store`, `test-sse`, `test-wasm-parity`, `test-ui*`, `replay-latest` | `Makefile`, `scripts/run_ui_tests.sh` | ✅ DONE |
+| CI-Jobs `wasm-parity`, `action-chain`, `ui-browser` | `.github/workflows/audio-dsp-benchmark.yml` | ✅ DONE |
+
+Ehrlich offen (nicht simuliert):
+
+- [ ] LC3plus/LC3-Decoder im Client – die Pipe übernimmt *decodierte* PCM-Blöcke (Android-Codec).
+- [ ] Hardware-Messung an echter Soundkarte/BLE-Gerät (Sandbox hat weder `/dev/snd` noch BT-Adapter).
+- [ ] Multi-Client-Session-Isolation (ein State pro App-Instanz).
+- [ ] Playwright-Browserlauf in dieser Sandbox: `cdn.playwright.dev` gesperrt ⇒ `make test-ui` meldet SKIP, CI-Job `ui-browser` führt die Specs mit Chromium aus.
 
 ---
 

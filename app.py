@@ -15,7 +15,9 @@ from __future__ import annotations
 import argparse
 import json
 import mimetypes
+import contextlib
 import os
+import select
 import socket
 import sys
 import threading
@@ -48,8 +50,40 @@ from session_engine import (  # noqa: E402
     FULL_CHAIN_SCRIPT,
     PRESETS,
     SAMPLE_BANKS,
+    SESSION_STORE,
     build_engine,
 )
+
+WASM_DIR = ROOT / "dist" / "wasm"
+WASM_MODULE = WASM_DIR / "kaoss_dsp.wasm"
+
+
+def wasm_status() -> dict[str, object]:
+    """Status des C++-DSP-Kerns als WebAssembly (``make wasm``)."""
+    built = WASM_MODULE.is_file()
+    manifest_path = WASM_DIR / "build-manifest.json"
+    manifest: dict[str, object] = {}
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            manifest = {}
+    return {
+        "ok": True,
+        "built": built,
+        "module": str(WASM_MODULE.relative_to(ROOT)) if built else "",
+        "url": "/wasm/kaoss_dsp.wasm" if built else "",
+        "bytes": WASM_MODULE.stat().st_size if built else 0,
+        "core": "cpp kaoss_dsp (audio_flinger_hook + dsp_transient_splitter + kaoss_quad_engine)",
+        "parity": "browser == native == python mirror",
+        # Emscripten-Modul (web/wasm/dsp_core.mjs) existiert nur mit emcc; der
+        # Browser fragt das ab, statt blind zu importieren und eine 404 zu loggen.
+        "emscripten_module": (WEB_ROOT / "wasm" / "dsp_core.mjs").is_file(),
+        "emscripten_url": "/wasm/dsp_core.mjs",
+        "build": manifest,
+        "offline": True,
+    }
+
 
 AUTO_PORT_CANDIDATES = (8080, 8086, 8088, 8090, 8099)
 DAEMONS = [
@@ -84,14 +118,16 @@ POST_ROUTES = {
 }
 
 ENDPOINT_LIST = [
-    "/api/status", "/api/runtime", "/api/state", "/api/actions", "/api/events",
+    "/api/status", "/api/runtime", "/api/state", "/api/actions", "/api/events", "/api/events/stream",
     "/api/action", "/api/chain/run", "/api/chain/reset",
     "/native-bridge/ports", "/native-bridge/load", "/devices/status", "/devices/select", "/permissions/check",
     "/api/presets", "/api/preset/apply", "/api/kaoss/xy", "/api/kaoss/freeze",
     "/api/dsp/process", "/api/pad/trigger", "/api/transport/record", "/api/loop/capture",
     "/api/transcribe", "/api/rhymes", "/api/avatar/mode", "/api/neurallift/generate",
-    "/api/session/export", "/mesh/default", "/dsp/transient", "/api/logs",
-    "/api/daemons", "/api/audio/calibrate", "/api/audio/capture",
+    "/api/session/export", "/api/session/latest", "/api/session/restore", "/api/session/replay", "/api/sessions",
+    "/api/audio/capture", "/api/audio/calibrate", "/api/daemons", "/wasm/kaoss_dsp.wasm",
+    "/mesh/default", "/dsp/transient", "/api/logs",
+    "/api/watchdog", "/api/bug-reports",
 ]
 
 ENGINE = build_engine(DB_PATH)
@@ -103,6 +139,40 @@ BRIDGE_ACTIVE_PORT: int | None = None
 DAEMON_REGISTRY_LOCK = threading.Lock()
 DAEMON_RESTARTS: dict[int, int] = {}
 DAEMON_LAST_RESTART_MS: dict[int, float] = {}
+
+# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5)
+# Drei Betriebsbausteine, vorher nicht vorhanden (grep → 0 Treffer):
+# rotierendes Log, Watchdog mit 5-Sekunden-Frist, Bug-Report-Datei.
+import bug_report  # noqa: E402
+from log_rotation import RotatingLog  # noqa: E402
+from watchdog import Watchdog  # noqa: E402
+
+APP_LOG = RotatingLog(ROOT / "dist" / "logs" / "one-app.log", max_bytes=256 * 1024, backups=3)
+BUG_REPORT_DIR = ROOT / "dist" / "bug-reports"
+
+
+def _watchdog_log(line: str) -> None:
+    print(line, flush=True)
+    APP_LOG.warning(line)
+
+
+WATCHDOG = Watchdog("kaoss-one-app-watchdog", timeout_s=5.0, sweep_s=1.0, logger=_watchdog_log)
+
+
+def beat_daemons() -> None:
+    """Lebenszeichen für alle logischen Engine-Rollen (ein Prozess, sechs Rollen)."""
+    for spec in DAEMONS:
+        WATCHDOG.beat(f"daemon:{int(spec['port'])}")
+
+
+def supervised_restart(name: str) -> dict[str, object]:
+    """Watchdog-Callback: logische Rolle neu initialisieren."""
+    try:
+        port = int(str(name).split(":")[-1])
+    except ValueError:
+        return {"ok": False, "error": f"unbekannte Watchdog-Einheit {name}"}
+    APP_LOG.warning("watchdog restart", unit=name, port=port)
+    return restart_daemon(port)
 
 
 def daemon_statuses() -> list[dict[str, object]]:
@@ -234,7 +304,10 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         super().__init__(*args, directory=str(WEB_ROOT), **kwargs)
 
     def log_message(self, fmt: str, *args: object) -> None:
-        print(f"[kaoss-one-app] {self.address_string()} {fmt % args}", flush=True)
+        line = f"{self.address_string()} {fmt % args}"
+        print(f"[kaoss-one-app] {line}", flush=True)
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): rotierendes Log.
+        APP_LOG.info(line, path=self.path, client=self.address_string())
 
     def end_headers(self) -> None:
         self.send_header("X-Kaoss-Zero-Cloud", "true")
@@ -243,11 +316,114 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
     def send_json(self, payload: object, code: int = 200) -> None:
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): Jede Antwort zählt
+        # als Lebenszeichen der logischen Engine-Rollen für den Watchdog.
+        beat_daemons()
         body = json_bytes(payload)
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # ------------------------------------------------------------------ #
+    # Server-Sent Events: echte Push-Kette zusätzlich zum Polling
+    # ------------------------------------------------------------------ #
+    def sse_write(self, event: str, payload: object, event_id: str | None = None) -> None:
+        lines = []
+        if event_id is not None:
+            lines.append(f"id: {event_id}")
+        if event:
+            lines.append(f"event: {event}")
+        lines.append(f"data: {json.dumps(payload, ensure_ascii=False)}")
+        self.wfile.write(("\n".join(lines) + "\n\n").encode("utf-8"))
+        self.wfile.flush()
+
+    def stream_events(self, query: dict[str, list[str]]) -> None:
+        """Hält die Verbindung offen und pusht jedes Ketten-Event sofort."""
+        since = int(query.get("since", ["0"])[0] or 0)
+        last_event_id = self.headers.get("Last-Event-ID") or ""
+        if last_event_id.strip().isdigit():
+            since = max(since, int(last_event_id.strip()))
+        limit = max(1, min(500, int(query.get("limit", ["200"])[0] or 200)))
+        heartbeat_s = max(1.0, min(120.0, float(query.get("heartbeat", ["15"])[0] or 15)))
+        max_events = int(query.get("max", ["0"])[0] or 0)  # 0 = endlos (Browser-Default)
+
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Accel-Buffering", "no")
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.close_connection = True
+
+        subscription = ENGINE.hub.subscribe(since=since, limit=limit)
+        sent = 0
+        last_beat = time.monotonic()
+        try:
+            self.wfile.write(b"retry: 2000\n\n")
+            self.sse_write("hello", {
+                "ok": True,
+                "transport": "sse",
+                "since": subscription.cursor,
+                "last_seq": ENGINE.hub.last_seq(),
+                "stream": ENGINE.hub.stats(),
+                "polling_fallback": "/api/events",
+            })
+            while True:
+                events = subscription.wait(timeout=min(heartbeat_s, 0.5))
+                if events:
+                    for event in events:
+                        self.sse_write("chain", event, event_id=str(event.get("seq")))
+                        sent += 1
+                elif time.monotonic() - last_beat >= heartbeat_s:
+                    self.wfile.write(b": heartbeat\n\n")
+                    self.wfile.flush()
+                    last_beat = time.monotonic()
+                if self.client_gone():
+                    break  # EventSource getrennt -> Thread und Abo freigeben
+                if max_events and sent >= max_events:
+                    self.sse_write("done", {"ok": True, "sent": sent, "seq": subscription.cursor})
+                    break
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass  # Client hat getrennt – EventSource reconnectet mit Last-Event-ID
+        finally:
+            ENGINE.hub.unsubscribe(subscription)
+
+    def client_gone(self) -> bool:
+        """Erkennt ein getrenntes SSE-Client-Socket, ohne auf den nächsten Push zu warten."""
+        try:
+            readable, _, _ = select.select([self.connection], [], [], 0)
+            if not readable:
+                return False
+            return not self.connection.recv(1, socket.MSG_PEEK)
+        except (OSError, ValueError):
+            return True
+
+    # ------------------------------------------------------------------ #
+    # WASM-Asset des C++-DSP-Kerns
+    # ------------------------------------------------------------------ #
+    def send_wasm_asset(self, path: str) -> None:
+        name = Path(path).name
+        # dist/wasm/ hält das ABI-Modul aus `make wasm`; web/wasm/ das
+        # Emscripten-Modul (dsp_core.mjs/.wasm). Beide liegen unter /wasm/.
+        web_wasm_dir = (WEB_ROOT / "wasm").resolve()
+        target = WASM_DIR / name
+        if not target.is_file():
+            candidate = web_wasm_dir / name
+            if candidate.is_file() and candidate.parent.resolve() == web_wasm_dir:
+                target = candidate
+        allowed = {WASM_DIR.resolve(), web_wasm_dir}
+        if not target.is_file() or target.parent.resolve() not in allowed:
+            self.send_json({"ok": False, "error": f"wasm asset not built: {name}", "hint": "make wasm"}, code=404)
+            return
+        body = target.read_bytes()
+        content_type = "application/wasm" if name.endswith(".wasm") else mimetypes.guess_type(name)[0] or "application/octet-stream"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(body)
 
@@ -284,6 +460,48 @@ class OneAppHandler(SimpleHTTPRequestHandler):
     # GET contract (read-only projections of the session state)
     # ------------------------------------------------------------------ #
     def do_GET(self) -> None:  # noqa: N802
+        """Öffentlicher GET-Eingang: Fehler werden Report + JSON-Antwort, nie Traceback-Leck."""
+        try:
+            self.route_get()
+        except Exception as exc:  # noqa: BLE001 - Phase 5: kein Absturz an der HTTP-Grenze
+            self.fail_with_report(exc, "GET")
+
+    def do_POST(self) -> None:  # noqa: N802
+        """Öffentlicher POST-Eingang: dieselbe Absicherung wie GET."""
+        try:
+            self.route_post()
+        except Exception as exc:  # noqa: BLE001
+            self.fail_with_report(exc, "POST")
+
+    def fail_with_report(self, exc: Exception, method: str) -> None:
+        """Schreibt einen Bug-Report und antwortet mit einer verständlichen Meldung."""
+        meta = bug_report.write_bug_report(
+            exc,
+            context={
+                "where": f"{method} {self.path}",
+                "app": "kaoss-one-app",
+                "version": APP_VERSION,
+                "client": self.address_string(),
+                "chain_seq": ENGINE.events[-1]["seq"] if ENGINE.events else 0,
+            },
+            message=f"{method} {self.path} fehlgeschlagen",
+            report_dir=BUG_REPORT_DIR,
+            log=_watchdog_log,
+        )
+        APP_LOG.error(f"{method} {self.path}: {type(exc).__name__}: {exc}", bug_report=meta["id"])
+        try:
+            self.send_json({
+                "ok": False,
+                "error": meta["user_message"],
+                "exception": type(exc).__name__,
+                "bug_report": meta["id"] if meta["ok"] else None,
+                "offline": True,
+                "note": "Lokaler Fehler protokolliert; die App läuft weiter.",
+            }, code=500)
+        except Exception:  # noqa: BLE001 - Verbindung kann schon weg sein
+            pass
+
+    def route_get(self) -> None:
         parsed = urlparse(self.path)
         query = parse_qs(parsed.query)
         path = parsed.path.rstrip("/") or "/"
@@ -343,6 +561,14 @@ class OneAppHandler(SimpleHTTPRequestHandler):
                     "session_state": True,
                     "looper_freeze": True,
                     "transport_record": True,
+                    # neu: echte Capture-Blöcke, Ketten-Persistenz, SSE, Replay, WASM-DSP
+                    "live_audio_capture": True,
+                    "capture_backends": ["alsa", "usb_uac2", "ble_lc3_ipc", "file"],
+                    "session_persistence": True,
+                    "session_store": str(SESSION_STORE.relative_to(ROOT)),
+                    "cypher_replay": True,
+                    "sse_events": True,
+                    "wasm_dsp": wasm_status()["built"],
                 },
             })
             return
@@ -361,23 +587,77 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path in {"/api/events/stream", "/events/stream"}:
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.send_header("Cache-Control", "no-store")
-            self.send_header("Connection", "keep-alive")
-            self.end_headers()
-            since = int(query.get("since", ["0"])[0] or 0)
-            events = ENGINE.events_since(since)
-            chunk = f"data: {json.dumps({'ok': True, 'events': events}, ensure_ascii=False)}\n\n"
-            self.wfile.write(chunk.encode("utf-8"))
+            self.stream_events(query)
             return
 
         if path in {"/api/session/latest", "/session/latest"}:
             try:
                 payload = ENGINE.load_session()
-                self.send_json({"ok": True, "session": payload})
             except FileNotFoundError:
-                self.send_json({"ok": False, "error": "no persisted session"}, code=404)
+                self.send_json({
+                    "ok": False,
+                    "error": "no persisted session",
+                    "store": str(SESSION_STORE.relative_to(ROOT)),
+                    "restored": ENGINE.restored,
+                    "sessions": ENGINE.list_sessions(),
+                }, code=404)
+                return
+            self.send_json({
+                "ok": True,
+                "session": payload,
+                "restored": ENGINE.restored,
+                "store": str(SESSION_STORE.relative_to(ROOT)),
+                "sessions": ENGINE.list_sessions(),
+            })
+            return
+
+        if path in {"/api/sessions", "/session/store", "/api/session/store"}:
+            self.send_json({
+                "ok": True,
+                "store": str(SESSION_STORE.relative_to(ROOT)),
+                "sessions": ENGINE.list_sessions(),
+                "restored": ENGINE.restored,
+                "chain_seq": ENGINE.events[-1]["seq"] if ENGINE.events else 0,
+            })
+            return
+
+        if path in {"/api/audio/capture", "/audio/capture"}:
+            frames = int(query.get("frames", ["0"])[0] or 0)
+            block = None
+            pcm_preview: list[float] = []
+            if frames:
+                captured = ENGINE.capture_router.pull(frames, timeout_s=float(query.get("timeout", ["0.3"])[0] or 0.3))
+                if captured is not None:
+                    block = captured.provenance()
+                    pcm_preview = [round(value, 6) for value in captured.pcm[:8]]
+            self.send_json({
+                "ok": True,
+                "status": ENGINE.capture_router.status(),
+                "probe": ENGINE.capture_router.probe(),
+                "block": block,
+                "pcm_preview": pcm_preview,
+                "stats": dict(ENGINE.capture_stats),
+                # Client-Seite (Browser/Android-Shell): echte AAudio/AudioRecord-
+                # Aufnahme läuft nativ, im Browser WebAudio – hier nur projiziert.
+                "client": {
+                    "backend": "browser-webaudio",
+                    "native_aaudio": False,
+                    "fallback_audiorecord": False,
+                    "running": bool(ENGINE.audio["mic_armed"]),
+                    "sample_rate_hz": ENGINE.audio["sample_rate_hz"],
+                    "frames_per_buffer": ENGINE.audio["frames_per_buffer"],
+                    "underruns": ENGINE.audio["underruns"],
+                    "note": "Native AAudio/AudioRecord capture runs in the Android shell; WebAudio in the browser.",
+                },
+            })
+            return
+
+        if path in {"/api/wasm", "/wasm/status"}:
+            self.send_json(wasm_status())
+            return
+
+        if path.startswith("/wasm/"):
+            self.send_wasm_asset(path)
             return
 
         if path in {"/api/events", "/api/chain", "/events"}:
@@ -481,14 +761,23 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path in {"/mesh/default", "/api/neurallift/default"}:
+            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
+            # Meldet den echten Avatar-Zustand: vor einem `neurallift.generate`
+            # ist das die Fallback-Kapsel ohne Rig (rig_bones 0, rigged False),
+            # danach die Zahlen des geschriebenen Landmark-Meshes. Die vorher
+            # fest eincompilierten 45000/18000/24 gab es nie.
             self.send_json({
                 "ok": True,
                 "glb": ENGINE.avatar["glb"],
+                "vertices": ENGINE.avatar["vertices"],
                 "lod0_tris": ENGINE.avatar["lod0_tris"],
                 "lod1_tris": ENGINE.avatar["lod1_tris"],
                 "rig_bones": ENGINE.avatar["rig_bones"],
+                "rigged": ENGINE.avatar["rigged"],
                 "generated_from": ENGINE.avatar["generated_from"],
-                "fallback": True,
+                "fallback": ENGINE.avatar["fallback"],
+                "offline": True,
+                "inference": False,
             })
             return
 
@@ -534,7 +823,35 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             return
 
         if path in {"/api/logs", "/logs"}:
-            self.send_json({"ok": True, "logs": self.chain_logs()})
+            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5): Ketten-Log plus
+            # Zustand der rotierenden Log-Datei (Größe, Rotationen, Grenze).
+            self.send_json({
+                "ok": True,
+                "logs": self.chain_logs(),
+                "file_log": APP_LOG.tail(40),
+                "rotation": APP_LOG.status(),
+            })
+            return
+
+        if path in {"/api/watchdog", "/watchdog"}:
+            self.send_json({
+                "ok": True,
+                "mode": "one-app",
+                "restart_action": "POST /api/daemons/restart",
+                **WATCHDOG.status(),
+            })
+            return
+
+        if path in {"/api/bug-reports", "/bug-reports"}:
+            reports = bug_report.list_reports(BUG_REPORT_DIR, limit=20)
+            self.send_json({
+                "ok": True,
+                "dir": str(BUG_REPORT_DIR),
+                "count": len(reports),
+                "reports": reports,
+                "uploaded": False,
+                "note": "Lokale Reports, kein Upload (Zero-Cloud).",
+            })
             return
 
         if path in {"/api/daemons", "/daemons"}:
@@ -543,22 +860,6 @@ class OneAppHandler(SimpleHTTPRequestHandler):
 
         if path in {"/api/audio/calibrate", "/audio/calibrate"}:
             self.send_json(calibrate_roundtrip())
-            return
-
-        if path in {"/api/audio/capture", "/audio/capture"}:
-            # Im Python-Host läuft die echte Aufnahme über WebAudio bzw. die native
-            # Android-Shell (AAudio/AudioRecord); hier wird der bekannte Zustand projiziert.
-            self.send_json({
-                "ok": True,
-                "backend": "browser-webaudio",
-                "native_aaudio": False,
-                "fallback_audiorecord": False,
-                "running": bool(ENGINE.audio["mic_armed"]),
-                "sample_rate_hz": ENGINE.audio["sample_rate_hz"],
-                "frames_per_buffer": ENGINE.audio["frames_per_buffer"],
-                "underruns": ENGINE.audio["underruns"],
-                "note": "Native AAudio/AudioRecord capture runs in the Android shell; WebAudio in the browser.",
-            })
             return
 
         if path == "/transcribe":
@@ -586,7 +887,7 @@ class OneAppHandler(SimpleHTTPRequestHandler):
     # ------------------------------------------------------------------ #
     # POST contract: the real action & interaction chain
     # ------------------------------------------------------------------ #
-    def do_POST(self) -> None:  # noqa: N802
+    def route_post(self) -> None:
         parsed = urlparse(self.path)
         path = parsed.path.rstrip("/") or "/"
         query = parse_qs(parsed.query)
@@ -609,10 +910,16 @@ class OneAppHandler(SimpleHTTPRequestHandler):
             self.send_json(self.action_response(result))
             return
 
-        if path in {"/api/session/import", "/session/import"}:
-            payload = params.get("session") if isinstance(params.get("session"), dict) else params
-            report = ENGINE.replay_cypher(payload if isinstance(payload, dict) else {})
-            self.send_json({"ok": report["ok"], "replay": report})
+        if path in {"/api/session/import", "/session/import", "/api/session/replay", "/session/replay"}:
+            self.send_json(self.session_replay(params))
+            return
+
+        if path in {"/api/session/restore", "/session/restore"}:
+            self.send_json(self.session_restore(params))
+            return
+
+        if path in {"/api/audio/capture", "/audio/capture"}:
+            self.send_json(self.capture_control(params))
             return
 
         if path in {"/api/chain/run", "/chain/run"}:
@@ -662,6 +969,92 @@ class OneAppHandler(SimpleHTTPRequestHandler):
         result = ENGINE.dispatch(action, params, strict=strict)
         load_native_port_for_action(action)
         self.send_json(self.action_response(result))
+
+    def session_restore(self, params: dict[str, object]) -> dict[str, object]:
+        """Persistierte Sitzung in den Live-State importieren (ohne Replay)."""
+        payload = params.get("session") if isinstance(params.get("session"), dict) else None
+        source = "inline"
+        if payload is None:
+            requested = str(params.get("path") or params.get("file") or "")
+            if requested:
+                target = Path(requested)
+                if not target.is_absolute():
+                    target = ROOT / target
+                if not target.is_file() or target.suffix != ".json":
+                    return {"ok": False, "error": f"session file not readable: {requested}"}
+                payload = ENGINE.load_session(target)
+                source = str(target.relative_to(ROOT))
+            else:
+                report = ENGINE.restore_from_store()
+                if report is None:
+                    return {"ok": False, "error": "no persisted session", "store": str(SESSION_STORE.relative_to(ROOT))}
+                return {"ok": bool(report.get("ok")), "source": report.get("source", ""), "restored": report, "state": ENGINE.state()}
+        report = ENGINE.restore_session(payload if isinstance(payload, dict) else {}, source=source)
+        return {"ok": bool(report.get("ok")), "source": source, "restored": report, "state": ENGINE.state()}
+
+    def session_replay(self, params: dict[str, object]) -> dict[str, object]:
+        """Ketten-Replay aus ``.cypher``: aus Pfad, Inline-Payload oder dem letzten Store-Eintrag."""
+        strict = bool(params.get("strict", True))
+        reset = bool(params.get("reset", True))
+        source = ""
+        payload = params.get("session") if isinstance(params.get("session"), dict) else None
+        if payload is not None:
+            source = "inline"
+        requested = str(params.get("path") or params.get("file") or "")
+        if payload is None and requested:
+            target = Path(requested)
+            if not target.is_absolute():
+                target = ROOT / target
+            try:
+                inside = target.resolve().is_relative_to(ROOT.resolve())
+            except AttributeError:  # Python < 3.9
+                inside = str(target.resolve()).startswith(str(ROOT.resolve()))
+            if not inside or target.suffix != ".json" or not target.is_file():
+                return {"ok": False, "error": f"session file not readable: {requested}", "store": str(SESSION_STORE.relative_to(ROOT))}
+            payload = ENGINE.load_session(target)
+            source = str(target.relative_to(ROOT))
+        if payload is None and isinstance(params.get("action_chain"), list):
+            payload = params
+            source = "inline"
+        if payload is None:
+            try:
+                payload = ENGINE.load_session()
+                source = str((SESSION_STORE / "latest.cypher.json").relative_to(ROOT))
+            except (FileNotFoundError, OSError):
+                return {"ok": False, "error": "no session payload and no persisted session", "store": str(SESSION_STORE.relative_to(ROOT))}
+        report = ENGINE.replay_cypher(payload if isinstance(payload, dict) else {}, strict=strict, reset=reset)
+        report.pop("results", None)
+        return {"ok": report["ok"], "source": source, "replay": report}
+
+    def capture_control(self, params: dict[str, object]) -> dict[str, object]:
+        """Echte Capture-Route öffnen/schließen und optional sofort einen Block ziehen."""
+        frames = int(params.get("frames") or 0)
+        if params.get("close") or params.get("open") is False:
+            ENGINE.capture_router.close()
+            ENGINE.capture.update({"armed": False, "backend": "none", "real_capture": False, "reason": "closed by request"})
+            return {"ok": True, "opened": False, "capture": dict(ENGINE.capture), "status": ENGINE.capture_router.status()}
+        info = ENGINE.open_capture(
+            mode=str(params.get("mode") or params.get("capture") or "auto"),
+            sample_rate_hz=params.get("sample_rate_hz"),
+            frames_per_buffer=params.get("frames_per_buffer"),
+            device=params.get("device"),
+            file_path=params.get("file"),
+        )
+        block = None
+        pcm_preview: list[float] = []
+        if frames:
+            captured = ENGINE.capture_router.pull(frames, timeout_s=float(params.get("timeout") or 0.4))
+            if captured is not None:
+                block = captured.provenance()
+                pcm_preview = [round(value, 6) for value in captured.pcm[:8]]
+        return {
+            "ok": True,
+            "opened": bool(info.get("opened")),
+            "capture": dict(ENGINE.capture),
+            "status": ENGINE.capture_router.status(),
+            "block": block,
+            "pcm_preview": pcm_preview,
+        }
 
     def action_response(self, result: dict[str, object]) -> dict[str, object]:
         code_status = result.get("status")
@@ -762,10 +1155,30 @@ def main() -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default="auto", help="numeric port, 0, or auto")
     parser.add_argument("--run-chain", action="store_true", help="execute the full action chain once at boot (demo/preview)")
+    parser.add_argument("--restore", action="store_true", help="persistierte Sitzung beim Start in den Live-State importieren")
+    parser.add_argument("--no-restore", action="store_true", help="Session-Store beim Start gar nicht lesen")
     args = parser.parse_args()
     if args.host not in {"127.0.0.1", "localhost", "0.0.0.0"}:
         raise SystemExit("Refusing non-local bind host for zero-cloud app")
     ensure_database(DB_PATH)
+    if args.no_restore:
+        ENGINE.inspect_on_boot = False
+        ENGINE.restored = {"ok": False, "reason": "session store disabled by --no-restore", "source": "", "resumed": False}
+    elif args.restore:
+        ENGINE.restored = ENGINE.restore_from_store() or ENGINE.restored
+        if ENGINE.restored and ENGINE.restored.get("ok"):
+            print(
+                f"Sitzung importiert: {ENGINE.restored.get('chain_length')} Schritte aus "
+                f"{ENGINE.restored.get('source')} ({str(ENGINE.restored.get('checksum'))[:12]})",
+                flush=True,
+            )
+    elif ENGINE.restored and ENGINE.restored.get("ok"):
+        print(
+            f"Letzte Sitzung verfügbar: {ENGINE.restored.get('chain_length')} Schritte, "
+            f"preset={ENGINE.restored.get('preset')} ({str(ENGINE.restored.get('checksum'))[:12]}) "
+            f"-> GET /api/session/latest, POST /api/session/restore|replay",
+            flush=True,
+        )
     if args.run_chain:
         report = ENGINE.run_script()
         print(f"Action chain pre-run: {report['steps']} steps ok={report['ok']} blocked={report['blocked']}", flush=True)
@@ -778,9 +1191,40 @@ def main() -> int:
         allow_reuse_address = True
 
     server = KaossServer((args.host, port), OneAppHandler)
+
+    # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 5)
+    # Watchdog: jede logische Engine-Rolle wird überwacht und nach 5 s ohne
+    # Lebenszeichen neu initialisiert (maximal 3 Rettungsversuche pro Rolle).
+    for spec in DAEMONS:
+        WATCHDOG.register(
+            f"daemon:{int(spec['port'])}",
+            restart=supervised_restart,
+            detail={"name": str(spec["name"]), "task": str(spec.get("task", ""))},
+        )
+    WATCHDOG.start()
+    hooks = bug_report.install_excepthook(
+        context={"app": "kaoss-one-app", "version": APP_VERSION, "port": port},
+        report_dir=BUG_REPORT_DIR,
+        log=_watchdog_log,
+    )
+    APP_LOG.info("one-app gestartet", port=port, host=args.host, actions=len(ACTION_CATALOGUE))
+
     print(f"Kaoss One App ready: http://{args.host}:{port}/", flush=True)
     print(f"POST actions: {len(POST_ROUTES) + 2} routes // chain catalogue: {len(ACTION_CATALOGUE)} actions", flush=True)
-    server.serve_forever()
+    print(
+        f"watchdog: {len(DAEMONS)} Rollen // 5 s Frist // log: {APP_LOG.path} "
+        f"({APP_LOG.max_bytes} B x {APP_LOG.backups + 1}) // bug-reports: {BUG_REPORT_DIR}",
+        flush=True,
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        APP_LOG.warning("one-app gestoppt (KeyboardInterrupt)")
+    finally:
+        WATCHDOG.stop()
+        bug_report.uninstall_excepthook(hooks)
+        with contextlib.suppress(OSError):
+            server.server_close()
     return 0
 
 

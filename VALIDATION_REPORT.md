@@ -145,8 +145,95 @@ State → UI** ohne Browser und ohne Cloud getestet.
   ist offen (siehe TODO 5.1).
 - `neurallift.generate` liefert ein prozedurales Offline-GLB-Fallback-Objekt,
   keine echte Bild-zu-Mesh-Inferenz.
-- Die Kette läuft pro Prozess (ein State pro App-Instanz); Multi-Client-Sessions
-  und Persistenz über Neustarts sind offen.
+- ~~Persistenz über Neustarts ist offen~~ → erledigt: `.cypher`-Session-Store mit
+  Re-Import und Replay (siehe unten). Offen bleibt Multi-Client-Session-Isolation
+  (ein State pro App-Instanz).
+
+## Live Capture, Session-Store, SSE, WASM & Playwright (neu, 2026-09-12)
+
+Fünf Leitungen wurden von Mock/Stub auf echten Betrieb gezogen; jede hat einen
+eigenen Test mit ausführbarer Ausgabe.
+
+### Echte Audio-Capture-Blöcke (Mic / USB-UAC2 / BLE)
+
+`engines/audio_capture.py` streamt Blöcke (ALSA `arecord`, USB-UAC2-Karte,
+Loopback-PCM-Pipe für Android `UsbUac2Client`/`BleCodecClient`, WAV-Datei) und
+`dsp.process` nimmt sie als Quelle. Test startet einen echten Client-Prozess:
+
+```text
+$ python3 tests/live_capture_dsp_test.py
+live capture dsp ok: 40 checks // real blocks=1 fixture blocks=0 sockets=sockets
+{"capture_stats": {"real_blocks": 1, "fixture_blocks": 0, "by_backend": {"client_pcm": 1}}}
+```
+
+Provenienz-Vertrag: jedes DSP-Event trägt `capture.real_capture`; ohne Hardware
+und ohne Client bleibt die Quelle `fixture` mit `real_capture: false` – das
+System gibt sich nie als live aus. Limiter und Transient-Labels gelten für
+echte PCM-Blöcke genauso (Peak −3.2 dBFS, Kick808 52 Hz).
+
+### Ketten-Persistenz über App-Neustarts + `.cypher`-Replay
+
+```text
+$ python3 tests/session_persist_replay_test.py
+session persist + replay ok: 71 checks // store=dist/sessions checksum=0027d4f4a84c chain=23
+```
+
+Geprüft: Neustart deterministisch (BPM 92.4, 0 Pads, Guard `BLOCKED`),
+`/api/session/latest` meldet die gespeicherte Kette, `POST /api/session/restore`
+importiert Preset/BPM/Input/XY/Freeze/Pads/Lyrics/GLB **ohne** Milestones zu
+setzen, `--restore`/`--no-restore`, HTTP-Inline-Replay und Legacy-Payloads
+(`params_restored: false`). Kanonische Kette: 23 Schritte, Checksumme stabil.
+
+### Streaming-Events (SSE)
+
+```text
+$ python3 tests/sse_events_stream_test.py
+sse events stream ok: 24 checks // pushed=3 push_latency=709.2ms published=5
+```
+
+`GET /api/events/stream` liefert `hello`, Backlog ab `?since=`/`Last-Event-ID`,
+Push pro Ketten-Event, Heartbeats, `event: done` bei `?max=N`; `/api/events`
+bleibt derselbe Hub (Polling-Fallback, kein Doppel-Zähler). Abonnent-Lecks
+werden geprüft (`/api/events/clients` = 0 nach Disconnect).
+
+### WASM-DSP-Kern == nativer C++-Build == Python-Spiegel
+
+```text
+$ make test-wasm-parity
+wasm gebaut: dist/wasm/kaoss_dsp.wasm (1166788 B, sha256 faff1203…)
+wasm == native: max deviation 2.400e-7 über 7 cases
+wasm == browser js fallback: max deviation 2.000e-7
+wasm == python mirror: max deviation 4.300e-7
+dsp parity ok: 274 checks // cases=7 // implementations=wasm+js+python+native
+```
+
+`kaoss_dsp_abi.cpp` (stabile C-ABI) wird als `wasm32-wasi`-Modul **und** als
+natives Binary gebaut; die Vektoren kommen aus dem echten DSP-Signalpfad.
+Abweichung = `float32`-Rundung; Python/JS-Implementierungen weichen um < 5e-7 ab.
+
+### Playwright-UI-Tests
+
+```text
+$ make test-ui-list
+Total: 7 tests in 1 file
+$ make test-ui
+SKIP test-ui: Chromium-Binary fehlt – 'make test-ui-install' …
+```
+
+Die 7 Specs (Boot, vollständige Kette, SSE-Live, Capture-Panel,
+Session-Store/Replay, XY-Pointer, BLOCKED-Guard) sind discoverbar und die
+Config startet den One-App-Server selbst. In dieser Sandbox ist der
+Playwright-CDN gesperrt, daher SKIP statt Grün; CI (`ui-browser`-Job)
+installiert Chromium und führt sie aus.
+
+### Ehrliche Abgrenzung (neu)
+
+- LC3plus/LC3-Decoder bleiben Client-Seite (Android-Codec); die Pipe übernimmt
+  *decodierte* PCM-Blöcke.
+- Die WASM-Parität deckt den gemeinsamen Kern ab; Vinyl-Wow/Looper existieren
+  nur im Python-Spiegel und bleiben in den Vektoren auf 0.
+- `dist/` (Sessions, Captures, WASM) ist Build-Artefakt und nicht versioniert;
+  `make clean` entfernt es.
 
 ## Kaoss Quad Console & Vault
 

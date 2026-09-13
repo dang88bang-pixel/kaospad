@@ -125,6 +125,8 @@ export function isActionReady(state, action) {
  * Client-State. Enthält die gleiche Kettenlogik wie der Server, damit die UI
  * auch ohne Backend (file://-Preview) korrekt reagiert.
  */
+export { isKaossState, usableDetail };
+
 export function chainReducer(state, event) {
   const next = state;
   const detail = event.detail || {};
@@ -176,8 +178,11 @@ export function chainReducer(state, event) {
         next.audio.mic_device = detail.device_id || '';
         break;
       case 'preset.apply':
-        next.preset = detail.preset || next.preset;
-        next.kaoss = detail.kaoss || next.kaoss;
+        // SSE-Events tragen nur eine Detail-Zusammenfassung; verschachtelte
+        // Sammlungen stehen dort als "<3 items>". Solche Platzhalter dürfen den
+        // State nie ersetzen (kaoss.modules wurde sonst zum String).
+        if (detail.preset && typeof detail.preset === 'object') next.preset = detail.preset;
+        if (isKaossState(detail.kaoss)) next.kaoss = detail.kaoss;
         break;
       case 'kaoss.xy':
       case 'kaoss.freeze':
@@ -196,7 +201,8 @@ export function chainReducer(state, event) {
       case 'pad.trigger': {
         // Serverseitig läuft jeder Pad-Trigger als voller DSP-Block – der
         // Client-Spiegel muss dieselben Zähler führen (Konvergenz-Check).
-        const pad = detail.pad || {};
+        const pad = detail.pad && typeof detail.pad === 'object' ? detail.pad : null;
+        if (!pad) break;  // zusammengefasster Payload: Server bleibt Quelle der Wahrheit
         next.pads = [...next.pads, pad].slice(-64);
         next.dsp.blocks += 1;
         next.dsp.kick808 += pad.transient === 'KICK808' ? 1 : 0;
@@ -215,11 +221,21 @@ export function chainReducer(state, event) {
         if (detail.looper) next.kaoss = applyKaoss(next.kaoss, detail.looper);
         break;
       case 'transcribe':
-        next.lyrics.transcripts = [...next.lyrics.transcripts, detail.transcript].slice(-32);
-        next.lyrics.rhymes = { ...next.lyrics.rhymes, ...(detail.rhymes || {}) };
+        // Transkript kommt als String (SSE-Summary-Pfad) oder als Objekt
+        // { text, language, offline } (Server/Offline-Dispatcher) – beides gilt,
+        // nur "<N items>"-Platzhalter nicht.
+        if (usableDetail(detail.transcript)) {
+          next.lyrics.transcripts = [...next.lyrics.transcripts, detail.transcript].slice(-32);
+        }
+        if (detail.rhymes && typeof detail.rhymes === 'object' && !Array.isArray(detail.rhymes)) {
+          next.lyrics.rhymes = { ...next.lyrics.rhymes, ...detail.rhymes };
+        }
         break;
       case 'rhyme.lookup':
-        next.lyrics.rhymes = { ...next.lyrics.rhymes, [String(detail.word || '').toLowerCase()]: detail.rhymes || [] };
+        next.lyrics.rhymes = {
+          ...next.lyrics.rhymes,
+          [String(detail.word || '').toLowerCase()]: Array.isArray(detail.rhymes) ? detail.rhymes : [],
+        };
         break;
       case 'avatar.mode':
         next.avatar = { ...next.avatar, ...pick(detail, ['mode', 'fps', 'avatars', 'bones']) };
@@ -242,7 +258,19 @@ function pick(source, keys) {
   return out;
 }
 
+function isKaossState(value) {
+  return Boolean(value) && typeof value === 'object' && Array.isArray(value.modules);
+}
+
+// Zusammenfassungs-Platzhalter aus SSE-Payloads ("<4 items>") sind keine Werte.
+function usableDetail(value) {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return !/^<\d+ items?>$/.test(value);
+  return typeof value === 'object';
+}
+
 function applyKaoss(kaoss, detail) {
+  if (!isKaossState(kaoss) || !detail || typeof detail !== 'object') return kaoss;
   const modules = kaoss.modules.map((module) => ({ ...module }));
   const index = Number(detail.module ?? 0);
   if (modules[index]) {

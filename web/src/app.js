@@ -1,4 +1,5 @@
 import { WebAudioCypherEngine } from './audio-engine.js';
+import { loadKaossDsp } from './dsp-core.js';
 import {
   ACTION_BY_NAME,
   ENGINES,
@@ -252,6 +253,34 @@ function flashAction(event) {
  * Eine Aktion ausführen: POST an die One-App State Engine, bei fehlendem Backend
  * deterministischer Offline-Fallback (statische PWA-Preview).
  */
+// Dasselbe Ketten-Event kommt über zwei Wege: als fetch-Antwort der Aktion und
+// als SSE-Push (der Server published während des POSTs, der Push ist oft
+// schneller). Seq allein reicht nicht zur Erkennung – nach `chain.reset` zählt
+// sie bei 1 neu und BLOCKED-Events erhöhen sie gar nicht (belegt: reset seq=1,
+// blocked seq=1). Deshalb Dedup über die Event-Identität.
+const appliedChainEvents = new Set();
+
+// SSE liefert absichtlich nur eine Detail-Zusammenfassung; verschachtelte
+// Sammlungen stehen dort als "<4 items>". Diese Platzhalter werden hier
+// entfernt, damit der Reducer sie nicht für echte Werte hält.
+function scalarDetail(summary) {
+  const detail = {};
+  Object.entries(summary || {}).forEach(([key, value]) => {
+    if (typeof value === 'string' && /^<\d+ items?>$/.test(value)) return;
+    detail[key] = value;
+  });
+  return detail;
+}
+
+function applyChainEvent(event) {
+  if (!event) return false;
+  const key = `${event.seq ?? "x"}:${event.action ?? ""}:${event.t_ms ?? ""}`;
+  if (appliedChainEvents.has(key)) return false;
+  appliedChainEvents.add(key);
+  chainState = chainReducer(chainState, event);
+  return true;
+}
+
 async function dispatchAction(action, params = {}) {
   const request = createAction(action, params);
   let event;
@@ -295,7 +324,7 @@ async function dispatchAction(action, params = {}) {
       chainState.offlineFallback = false;
     }
   }
-  chainState = chainReducer(chainState, event);
+  applyChainEvent(event);
   renderChain(event);
   await loadNativePortForTask(action, event);
   return event;
@@ -322,10 +351,12 @@ async function loadNativePortForTask(action, event) {
 }
 
 async function runFullChain() {
+  await hydrationPromise;  // Boot-Hydration muss vor dem Reset abgeschlossen sein
   chainStateOutput.value = 'CHAIN: LÄUFT …';
   // Die Referenzkette startet immer aus einem definierten Zustand.
   await dispatchAction('chain.reset');
   chainState = defaultState();
+  appliedChainEvents.clear();
   renderChain();
   // dispatchAction reduziert jedes Event genau einmal in chainState – deshalb
   // hier bewusst keine zweite Reduktion über runChain().
@@ -344,6 +375,7 @@ document.querySelector('#run-full-chain').addEventListener('click', runFullChain
 document.querySelector('#chain-reset').addEventListener('click', async () => {
   await dispatchAction('chain.reset');
   chainState = defaultState();
+  appliedChainEvents.clear();
   renderChain();
 });
 
@@ -940,6 +972,7 @@ async function exportSession() {
     const session = payload.detail?.session || payload.session;
     downloadJson(`kaoss-${preset}-${input}.cypher`, session);
     vaultState.value = `VAULT: EXPORTED ${preset} // ${session?.chain_length ?? 0} CHAIN STEPS`;
+    loadSessionStore();  // frisch persistierte Kette sofort in #session-latest zeigen
     return session;
   } catch {
     downloadJson(`kaoss-${preset}-${input}.cypher`, { format: '.cypher', preset, input, offline: true, limiter_dbfs: -3.2, freezeState, events: chainState.events });
@@ -982,7 +1015,10 @@ document.querySelector('#import-session')?.addEventListener('click', async () =>
 });
 loadPresets().then(() => applyPreset({ dispatch: false }));
 loadLogs();
-setInterval(loadLogs, 6000);
+// Polling bleibt als Fallback; solange SSE liefert, muss es nicht nachladen.
+setInterval(() => {
+  if (Date.now() - lastStreamEventMs > 20000) loadLogs();
+}, 6000);
 
 // --------------------------------------------------------------------------- //
 // Boot: State von der Engine holen, damit die UI die laufende Kette zeigt
@@ -994,8 +1030,11 @@ async function hydrateFromServer() {
     const state = await response.json();
     if (state?.chain?.length) {
       const events = await fetch(`/api/events?since=0`, { cache: 'no-store' }).then((res) => (res.ok ? res.json() : { events: [] }));
-      chainState = defaultState();
-      (events.events || []).forEach((event) => { chainState = chainReducer(chainState, event); });
+      // Bewusst kein defaultState() hier: Hydration läuft asynchron beim Boot und
+      // würde sonst eine bereits laufende Kette überschreiben (im Browser
+      // beobachtet: 7 statt 23 Schritte). applyChainEvent ergänzt nur, was lokal
+      // fehlt; die Dedup-Menge verhindert Doppelzählung.
+      (events.events || []).forEach((event) => { applyChainEvent(event); });
     }
     if (state?.input?.selected) inputSelect.value = state.input.selected;
     renderChain();
@@ -1004,7 +1043,217 @@ async function hydrateFromServer() {
   }
 }
 
-hydrateFromServer();
+const hydrationPromise = hydrateFromServer();
+// --------------------------------------------------------------------------- //
+// SSE: /api/events/stream pusht Ketten-Events live (Polling bleibt Fallback)
+// --------------------------------------------------------------------------- //
+const streamState = document.querySelector('#stream-state');
+let eventStream = null;
+let lastStreamEventMs = 0;
+
+function streamLabel(text) {
+  if (streamState) streamState.value = text;
+}
+
+function connectEventStream(since = chainState.seq || 0) {
+  if (typeof EventSource === 'undefined') {
+    streamLabel('STREAM: POLLING (kein EventSource)');
+    return null;
+  }
+  if (eventStream) eventStream.close();
+  const source = new EventSource(`/api/events/stream?since=${encodeURIComponent(since)}&heartbeat=15`);
+  eventStream = source;
+  source.addEventListener('hello', (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      lastStreamEventMs = Date.now();
+      streamLabel(`STREAM: LIVE // seq ${payload.last_seq} // hub ${payload.stream?.buffered ?? 0} events`);
+    } catch {
+      streamLabel('STREAM: LIVE');
+    }
+  });
+  source.addEventListener('chain', (event) => {
+    let payload;
+    try {
+      payload = JSON.parse(event.data);
+    } catch {
+      return;
+    }
+    lastStreamEventMs = Date.now();
+    // dispatchAction() reduziert dasselbe Event bereits – Dedup verhindert die
+    // Doppelzählung, egal welcher Weg zuerst ankommt.
+    if (applyChainEvent({ ...payload, detail: scalarDetail(payload.detail_summary) })) {
+      renderChain(payload);
+    }
+    streamLabel(`STREAM: LIVE // seq ${payload.seq} ${payload.action} ${payload.status}`);
+  });
+  source.addEventListener('done', () => streamLabel('STREAM: DONE'));
+  source.onerror = () => {
+    streamLabel('STREAM: RECONNECT…');
+  };
+  return source;
+}
+
+function disconnectEventStream() {
+  if (eventStream) eventStream.close();
+  eventStream = null;
+  streamLabel('STREAM: OFF');
+}
+
+// --------------------------------------------------------------------------- //
+// Echte Capture-Blöcke (Mic / USB-UAC2 / BLE-IPC) statt Fixtures
+// --------------------------------------------------------------------------- //
+const captureState = document.querySelector('#capture-state');
+
+async function refreshCapture() {
+  try {
+    const response = await fetch('/api/audio/capture', { cache: 'no-store' });
+    if (!response.ok) throw new Error(`capture http ${response.status}`);
+    const payload = await response.json();
+    const status = payload.status || {};
+    const backend = status.armed ? status.backend : 'none';
+    const live = status.real_capture ? 'LIVE' : status.armed ? 'ARMED (wartet)' : 'FIXTURE';
+    if (captureState) {
+      captureState.value = `CAPTURE: ${backend.toUpperCase()} ${live} // ${status.blocks || 0} blocks // route ${status.route}`;
+    }
+    return payload;
+  } catch (error) {
+    if (captureState) captureState.value = `CAPTURE: OFFLINE (${error.message})`;
+    return null;
+  }
+}
+
+async function openCapture() {
+  try {
+    const response = await fetch('/api/audio/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ mode: 'auto' }),
+    });
+    const payload = await response.json();
+    const info = payload.capture || {};
+    if (captureState) {
+      captureState.value = `CAPTURE: ${String(info.backend || 'none').toUpperCase()} ${info.real_capture ? 'LIVE' : 'FIXTURE'} // ${info.reason || info.transport || ''}`;
+    }
+    return payload;
+  } catch (error) {
+    if (captureState) captureState.value = `CAPTURE: ERROR ${error.message}`;
+    return null;
+  }
+}
+
+async function pullCaptureBlock(frames = 128) {
+  try {
+    const response = await fetch('/api/audio/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({ frames }),
+    });
+    const payload = await response.json();
+    const block = payload.block;
+    if (captureState) {
+      captureState.value = block
+        ? `CAPTURE-BLOCK: ${block.backend} ${block.real_capture ? 'REAL' : 'FILE'} // ${block.frames}f @${block.sample_rate_hz}Hz peak ${block.peak_dbfs} dBFS`
+        : `CAPTURE-BLOCK: keiner (${payload.status?.backend || 'none'})`;
+    }
+    return payload;
+  } catch (error) {
+    if (captureState) captureState.value = `CAPTURE-BLOCK: ERROR ${error.message}`;
+    return null;
+  }
+}
+
+document.querySelector('#capture-open')?.addEventListener('click', openCapture);
+document.querySelector('#capture-pull')?.addEventListener('click', () => pullCaptureBlock(128));
+
+// --------------------------------------------------------------------------- //
+// Session-Store: letzte Sitzung anzeigen, importieren, erneut ausführen
+// --------------------------------------------------------------------------- //
+const sessionLatest = document.querySelector('#session-latest');
+
+async function loadSessionStore() {
+  try {
+    // Leerer Store ist der Normalfall (frische Installation): Der Server
+    // antwortet dort bewusst mit 404, der Browser würde das als Konsolenfehler
+    // melden. Deshalb erst die (immer 200 liefernde) Liste abfragen und
+    // `/api/session/latest` nur holen, wenn wirklich etwas persistiert ist.
+    const list = await fetch('/api/sessions', { cache: 'no-store' });
+    if (list.ok) {
+      const index = await list.json();
+      if (Array.isArray(index.sessions) && index.sessions.length === 0) {
+        if (sessionLatest) sessionLatest.value = 'SESSION: keine persistierte Kette';
+        return { ok: false, error: 'no persisted session', sessions: [] };
+      }
+    }
+    const response = await fetch('/api/session/latest', { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok || !payload.ok) {
+      if (sessionLatest) sessionLatest.value = 'SESSION: keine persistierte Kette';
+      return payload;
+    }
+    const session = payload.session || {};
+    if (sessionLatest) {
+      sessionLatest.value =
+        `SESSION: ${session.chain_length} Schritte // ${session.preset} // ${session.input} // ` +
+        `${String(session.checksum || '').slice(0, 12)}${payload.restored?.imported ? ' // IMPORTIERT' : ''}`;
+    }
+    return payload;
+  } catch (error) {
+    if (sessionLatest) sessionLatest.value = `SESSION: ERROR ${error.message}`;
+    return null;
+  }
+}
+
+async function restoreLatestSession() {
+  try {
+    const response = await fetch('/api/session/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      cache: 'no-store',
+      body: JSON.stringify({}),
+    });
+    const payload = await response.json();
+    if (vaultState) {
+      vaultState.value = payload.ok
+        ? `VAULT: SITZUNG IMPORTIERT ${(payload.restored?.chain_length) || 0} Schritte`
+        : `VAULT: IMPORT FEHLGESCHLAGEN ${payload.error || ''}`;
+    }
+    await hydrateFromServer();
+    await loadSessionStore();
+    return payload;
+  } catch (error) {
+    if (vaultState) vaultState.value = `VAULT: IMPORT ERROR ${error.message}`;
+    return null;
+  }
+}
+
+document.querySelector('#restore-session')?.addEventListener('click', restoreLatestSession);
+
+// --------------------------------------------------------------------------- //
+// DSP-Kern: WebAssembly (C++) mit JS-Fallback – Browser rechnet wie Native
+// --------------------------------------------------------------------------- //
+const dspCoreState = document.querySelector('#dsp-core-state');
+let dspCore = null;
+
+async function initDspCore() {
+  dspCore = await loadKaossDsp({ url: '/wasm/kaoss_dsp.wasm' });
+  if (dspCoreState) {
+    dspCoreState.value =
+      dspCore.engine === 'wasm'
+        ? `DSP: WASM ABI ${dspCore.abi} // limiter ${dspCore.limiterDbfs} dBFS`
+        : `DSP: JS FALLBACK (${dspCore.loadError ? 'kein .wasm – make wasm' : 'ok'})`;
+  }
+  return dspCore;
+}
+
+// Boot der neuen Leitungen (nach deren Definition, TDZ-frei).
+connectEventStream();
+refreshCapture();
+loadSessionStore();
+initDspCore();
+setInterval(refreshCapture, 8000);
 
 // Debug-/Test-Hook: headless Kettenausführung aus der Browserkonsole oder Playwright.
 globalThis.__KAOSS_CHAIN__ = {
@@ -1016,6 +1265,14 @@ globalThis.__KAOSS_CHAIN__ = {
   catalogue: ACTION_BY_NAME,
   engines: ENGINES,
   missing: (action) => missingMilestones(chainState, action),
+  // neue Leitungen: SSE, echte Capture-Blöcke, Session-Store, WASM-DSP
+  stream: () => eventStream,
+  connectStream: connectEventStream,
+  disconnectStream: disconnectEventStream,
+  streamEvents: () => chainState.events,
+  capture: { refresh: refreshCapture, open: openCapture, pull: pullCaptureBlock },
+  sessions: { latest: loadSessionStore, restore: restoreLatestSession },
+  dspCore: () => dspCore,
 };
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');

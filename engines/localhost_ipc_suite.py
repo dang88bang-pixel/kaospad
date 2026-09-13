@@ -36,6 +36,24 @@ from rhyme_matrix import ensure_database, lookup  # noqa: E402
 sys.path.insert(0, str(ROOT / "engines"))
 from device_matrix import status as device_status  # noqa: E402
 from session_engine import ACTION_BY_NAME, FULL_CHAIN_SCRIPT, build_engine  # noqa: E402
+# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
+# Port 8082 nutzt dieselbe Mesh-Erzeugung wie der echte NeuralLift-Daemon.
+sys.path.insert(0, str(ROOT / "engines" / "neurallift_360"))
+from engine_service import mesh_payload  # noqa: E402
+# -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+# Retry mit Backoff + Circuit Breaker für jede lokale IPC-/Aktionsgrenze.
+from resilience import REGISTRY, RetryPolicy  # noqa: E402
+
+# FlatBuffers-Codec der KPCM-PCM-Pfade (Schema: proto/kaoss_pcm.fbs).
+import kpcm_flatbuffers  # noqa: E402
+
+ACTION_POLICY = RetryPolicy(attempts=2, base_delay_s=0.02, factor=2.0, max_delay_s=0.1, jitter=0.25, deadline_s=2.0)
+
+
+def guarded_action(action: str, fn: object):
+    """Aktion hinter Breaker ``action:<name>`` – liefert ein AttemptRecord."""
+    breaker = REGISTRY.get(f"action:{action}", failure_threshold=3, reset_timeout_s=5.0)
+    return breaker.call(fn, ACTION_POLICY)
 
 HOST = "127.0.0.1"
 DAEMONS = [
@@ -131,6 +149,22 @@ class JsonHandler(SimpleHTTPRequestHandler):
             })
             return
         if self.role == "master-system-orchestrator":
+            if parsed.path in {"/resilience", "/api/resilience"}:
+                # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+                # Sichtbarer Zustand der Retry-/Circuit-Breaker-Schicht.
+                self.send_json({
+                    "ok": True,
+                    "guarded_by": "engines/resilience.py",
+                    "breakers": REGISTRY.snapshot(),
+                    "policy": {
+                        "attempts": ACTION_POLICY.attempts,
+                        "base_delay_s": ACTION_POLICY.base_delay_s,
+                        "factor": ACTION_POLICY.factor,
+                        "deadline_s": ACTION_POLICY.deadline_s,
+                    },
+                    "note": "Retry + Circuit Breaker an lokalen IPC-/Hardware-Grenzen; keine externen Aufrufe",
+                })
+                return
             if parsed.path == "/native-bridge/ports":
                 self.send_json({"ok": True, "bridge": "native-localhost-ipc", "ports": port_statuses()})
                 return
@@ -175,13 +209,18 @@ class JsonHandler(SimpleHTTPRequestHandler):
                 })
                 return
         if self.role == "neurallift-engine" and parsed.path == "/mesh/default":
-            self.send_json({
-                "glb": ENGINE.avatar["glb"],
-                "lod0_tris": ENGINE.avatar["lod0_tris"],
-                "lod1_tris": ENGINE.avatar["lod1_tris"],
-                "rig_bones": ENGINE.avatar["rig_bones"],
-                "generated_from": ENGINE.avatar["generated_from"],
-            })
+            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 2, P2-2)
+            # Port 8082 meldete hier die festen Stub-Zahlen aus ENGINE.avatar
+            # (lod0_tris 45000 / rig_bones 24) – ohne Mesh, ohne Datei. Jetzt wird
+            # dieselbe Funktion wie im echten Engine-Daemon aufgerufen, die ein
+            # GLB aus 33 Pose-Landmarks baut und die Kennzahlen zurückliest.
+            payload = mesh_payload(write=False)
+            payload["lod1_tris"] = 0
+            payload["generated_from"] = ENGINE.avatar["generated_from"]
+            payload["offline"] = True
+            payload["engine"] = "neurallift"
+            payload["transport"] = "unix stream"
+            self.send_json(payload)
             return
         if self.role == "offline-whisper-daemon":
             if parsed.path == "/transcribe":
@@ -230,7 +269,26 @@ class JsonHandler(SimpleHTTPRequestHandler):
             }, code=403)
             return
         strict = bool(params.pop("strict", True))
-        self.send_json(action_response(ENGINE.dispatch(action, params, strict=strict)))
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+        # Jede Aktionsgrenze läuft hinter Retry + Circuit Breaker: Ein werfender
+        # Engine-Aufruf wird einmal erneut versucht und danach mit 500/503
+        # beantwortet, statt die Verbindung still hängen zu lassen.
+        record = guarded_action(action, lambda: ENGINE.dispatch(action, params, strict=strict))
+        if not record.ok:
+            self.send_json({
+                "ok": False,
+                "action": action,
+                "status": "REFUSED" if record.refused else "ERROR",
+                "error": record.error,
+                "resilience": {
+                    "breaker": record.breaker,
+                    "tries": record.tries,
+                    "refused": record.refused,
+                    "attempts": record.attempts,
+                },
+            }, code=503 if record.refused else 500)
+            return
+        self.send_json(action_response(record.value))
 
 
 ACTION_BY_PATH = {path: action for path, action in {
@@ -256,15 +314,33 @@ ACTION_BY_PATH = {path: action for path, action in {
 
 
 class PCMHandler(socketserver.BaseRequestHandler):
+    """PCM-Leitung 8081: Handshake plus (seit Phase 3) KPCF-FlatBuffers-Frames."""
+
     def handle(self) -> None:
-        data = self.request.recv(64)
-        if data:
-            state = ENGINE.audio
-            self.request.sendall(
-                f"PCM_FLOAT32_READY sample_rate={int(state['sample_rate_hz'])} "
-                f"frames={state['frames_per_buffer']} roundtrip_ms={state['roundtrip_ms']} "
-                f"route=127.0.0.1:8081\n".encode("utf-8")
-            )
+        data = self.request.recv(1 << 16)
+        if not data:
+            return
+        state = ENGINE.audio
+        extra = ""
+        if data[:4] == kpcm_flatbuffers.FRAME_MAGIC:
+            # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+            # FlatBuffers-PCM auf der TCP-Leitung: decodieren und die Kennzahlen
+            # zurückschicken, damit der Sender die Übertragung prüfen kann.
+            try:
+                block = kpcm_flatbuffers.decode_frame(data)
+                extra = (
+                    f" wire=KPCF fb_frames={int(block['frames'])}"
+                    f" fb_rate={int(block['sample_rate_hz'])}"
+                    f" fb_checksum={block['checksum']}"
+                    + ("" if block["ok"] else " fb_error=frames_mismatch")
+                )
+            except kpcm_flatbuffers.FlatBufferError as exc:
+                extra = f" wire=KPCF fb_error={str(exc)[:48].replace(' ', '_')}"
+        self.request.sendall(
+            f"PCM_FLOAT32_READY sample_rate={int(state['sample_rate_hz'])} "
+            f"frames={state['frames_per_buffer']} roundtrip_ms={state['roundtrip_ms']} "
+            f"route=127.0.0.1:8081{extra}\n".encode("utf-8")
+        )
 
 
 class AvatarHandler(socketserver.BaseRequestHandler):

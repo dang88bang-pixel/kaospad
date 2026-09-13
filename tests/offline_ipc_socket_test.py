@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "engines"))
 
 
 def assert_localhost(host: str) -> None:
@@ -66,8 +67,25 @@ def main() -> int:
         assert [item["port"] for item in ports["ports"]] == [8080, 8081, 8082, 8083, 8084, 8085]
         assert all(item["bind"] == "127.0.0.1" for item in ports["ports"])
 
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+        # Retry-/Circuit-Breaker-Schicht muss über echtes HTTP sichtbar sein.
+        resilience = http_json("http://127.0.0.1:8080/resilience")
+        assert resilience["ok"] is True
+        assert resilience["guarded_by"] == "engines/resilience.py"
+        assert resilience["policy"]["attempts"] >= 2 and resilience["policy"]["deadline_s"] > 0
+        assert isinstance(resilience["breakers"], list)
+
         mesh = http_json("http://127.0.0.1:8082/mesh/default")
-        assert mesh["rig_bones"] == 24 and mesh["lod0_tris"] == 45000
+        # Früher standen hier die hartcodierten Stub-Werte (rig_bones 24,
+        # lod0_tris 45000) – also genau die Zahlen, die das Audit als Fake
+        # geführt hat. Seit der echten Landmark-Mesh-Erzeugung (Phase 2, P2-2)
+        # gelten messbare Invarianten aus der erzeugten GLB-Datei.
+        assert mesh["ok"] is True and mesh["inference"] is False
+        assert mesh["rig_bones"] == 26, mesh["rig_bones"]
+        assert mesh["lod0_tris"] == mesh["triangles"] > 0, mesh
+        assert mesh["vertices"] > 0 and mesh["glb_bytes"] > 1000
+        assert len(mesh["sha256"]) == 64
+        assert http_json("http://127.0.0.1:8082/mesh/default")["sha256"] == mesh["sha256"]
 
         rhymes = http_json("http://127.0.0.1:8085/rhymes?word=beton")
         assert "SEKTOR" in rhymes["rhymes"]
@@ -84,6 +102,23 @@ def main() -> int:
         with socket.create_connection(("127.0.0.1", 8081), timeout=1.0) as sock:
             sock.sendall(b"PING")
             assert b"PCM_FLOAT32_READY" in sock.recv(128)
+
+        # -- REAL-IMPLEMENTATION 2026-09-12 (Audit Phase 3)
+        # Derselbe Port versteht jetzt auch KPCF-FlatBuffers-Frames und meldet
+        # die decodierten Kennzahlen zurück (Schema: proto/kaoss_pcm.fbs).
+        from audio_capture import encode_ipc_frame
+        from kpcm_flatbuffers import FRAME_MAGIC, samples_checksum
+
+        pcm = [0.0, 0.25, -0.5, 0.999, -1.0, 0.123456]
+        with socket.create_connection(("127.0.0.1", 8081), timeout=1.0) as sock:
+            frame = encode_ipc_frame(pcm, 48_000.0, fmt="flatbuffers", seq=9, source="client_pcm")
+            assert frame[:4] == FRAME_MAGIC
+            sock.sendall(frame)
+            reply = sock.recv(256).decode("utf-8")
+            assert "PCM_FLOAT32_READY" in reply, reply
+            assert "wire=KPCF" in reply and f"fb_frames={len(pcm)}" in reply, reply
+            assert f"fb_checksum={samples_checksum(pcm)}" in reply, reply
+            assert "fb_error" not in reply, reply
 
         with socket.create_connection(("127.0.0.1", 8083), timeout=1.0) as sock:
             avatar = json.loads(sock.recv(512).decode("utf-8"))
