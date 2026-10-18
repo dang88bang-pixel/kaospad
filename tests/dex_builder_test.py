@@ -260,7 +260,9 @@ print(repr(out))
 
 def apk_integration_tests(blob: bytes) -> None:
     section("Integration: classes.dex in der gebauten APK")
-    apk = ROOT / "releases" / "KaossBeatboxStudio-v5.0.0-Universal-Signed.apk"
+    release_key = ROOT / "android" / "signing" / "kaoss-release-key.pem"
+    apk_name = "KaossBeatboxStudio-v5.0.0-Universal-Signed.apk"
+    apk = (ROOT / "releases" / apk_name) if release_key.exists() else (ROOT / "dist" / "signed-ephemeral" / apk_name)
     if not apk.exists():
         SKIPPED.append("APK fehlt (make signed-apk)")
         print("[SKIP] APK fehlt -- Integrationsprüfung übersprungen", flush=True)

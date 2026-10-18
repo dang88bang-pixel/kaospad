@@ -1,0 +1,11 @@
+# Gepinnte Python-Abhängigkeiten für Tests und Build-Gates (P1-7).
+# Installation: python3 -m pip install -r requirements-dev.txt
+#
+# Pflicht für die Parität/Toolchain-Gates:
+flatbuffers==25.12.19     # tests/flatbuffers_pcm_test.py (KPCM-Codec)
+ziglang==0.17.0           # scripts/build_wasm.sh (wasm32-Toolchain)
+wasmtime==49.0.0          # tests/wasm_cross_runtime_test.py (zweite WASM-Laufzeit)
+#
+# Optional (sonst SKIP in make test):
+# pocketsphinx==5.1.1     # engines/whisper_offline/real_asr.py (echter Dekodierlauf)
+# androguard==4.1.4       # tests/dex_builder_test.py (Referenz-Parser)

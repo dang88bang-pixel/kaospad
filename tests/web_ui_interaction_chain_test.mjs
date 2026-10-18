@@ -351,7 +351,7 @@ globalThis.URL = Object.assign(globalThis.URL, {
   revokeObjectURL: () => {},
 });
 globalThis.fetch = async (url, options) => {
-  const target = String(url).startsWith('http') ? url : baseUrl + url;
+  const target = new URL(String(url), baseUrl).href; // relative Pfade wie im Browser auflösen
   if (process.env.KAOSS_UI_DEBUG) console.error(`FETCH START ${options?.method || 'GET'} ${target}`);
   try {
     const response = await realFetch(target, options);
@@ -677,7 +677,8 @@ check('port cards show pid', el('port-grid').innerHTML.includes('pid '), el('por
   const requested = [];
   const original = globalThis.fetch;
   const makeStub = (sessions) => async (url, options) => {
-    const path = String(url).replace(baseUrl, '');
+    const resolved = new URL(String(url), baseUrl);
+    const path = resolved.pathname + resolved.search;
     requested.push(`${options?.method || 'GET'} ${path}`);
     if (path.startsWith('/api/sessions')) return jsonResponse({ ok: true, store: 'dist/sessions', sessions, restored: { ok: false } });
     if (path.startsWith('/api/session/latest')) {
