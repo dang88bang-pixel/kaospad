@@ -12,6 +12,7 @@ import os
 import stat
 import struct
 import subprocess
+import sys
 import time
 import zipfile
 from pathlib import Path
@@ -442,11 +443,38 @@ def _adler32(data: bytes) -> int:
     return zlib.adler32(data) & 0xFFFFFFFF
 
 
-def ensure_keys() -> tuple[Path, Path, Path]:
+EPHEMERAL_OUT = ROOT / "dist" / "signed-ephemeral"
+
+
+def ensure_keys() -> tuple[Path, Path, Path, bool]:
+    """Liefert (key, cert, cert_der, ephemeral).
+
+    * Schlüssel + Zertifikat vorhanden  -> Release-Modus (Ausgabe in releases/).
+    * Nur Zertifikat vorhanden (Schlüssel fehlt, z. B. im Klon) -> das getrackte
+      Zertifikat wird NIE überschrieben. Stattdessen Wegwerf-Paar unter
+      dist/ und Ausgabe nach dist/signed-ephemeral/ (ephemeral=True).
+    * Keines vorhanden -> Erstinitialisierung in android/signing/.
+    """
     SIGNING.mkdir(parents=True, exist_ok=True)
     key = SIGNING / "kaoss-release-key.pem"
     cert = SIGNING / "kaoss-release-cert.pem"
     cert_der = SIGNING / "kaoss-release-cert.der"
+    ephemeral = False
+    if key.exists() and cert.exists():
+        pass
+    elif cert.exists() and not key.exists():
+        ephemeral = True
+        eph = ROOT / "dist" / "signing-ephemeral"
+        eph.mkdir(parents=True, exist_ok=True)
+        key = eph / "ephemeral-key.pem"
+        cert = eph / "ephemeral-cert.pem"
+        cert_der = eph / "ephemeral-cert.der"
+        print(
+            "WARNUNG: Release-Schluessel android/signing/kaoss-release-key.pem fehlt. "
+            "Das getrackte Zertifikat bleibt unveraendert; es wird eine Wegwerf-Test-Signatur "
+            f"nach {EPHEMERAL_OUT.relative_to(ROOT)}/ gebaut (NICHT veroeffentlichen).",
+            file=sys.stderr,
+        )
     if not key.exists() or not cert.exists():
         subj = "/CN=Kaoss Beatbox Studio Offline/O=Kaoss/C=DE"
         subprocess.check_call(
@@ -471,7 +499,7 @@ def ensure_keys() -> tuple[Path, Path, Path]:
         )
         os.chmod(key, stat.S_IRUSR | stat.S_IWUSR)
     subprocess.check_call(["openssl", "x509", "-in", str(cert), "-outform", "DER", "-out", str(cert_der)])
-    return key, cert, cert_der
+    return key, cert, cert_der, ephemeral
 
 
 def build_resources_arsc() -> bytes:
@@ -704,10 +732,11 @@ def sha256sums(path: Path) -> Path:
 
 
 def main() -> int:
-    key, cert, cert_der = ensure_keys()
+    key, cert, cert_der, ephemeral = ensure_keys()
     files = collect_files()
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    apk = OUT_DIR / APK_NAME
+    out_dir = EPHEMERAL_OUT if ephemeral else OUT_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    apk = out_dir / APK_NAME
     write_zip_aligned(files, apk)
     jar_sign(apk, key, cert)
     apk_v2_sign(apk, key, cert_der)

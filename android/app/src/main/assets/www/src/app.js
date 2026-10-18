@@ -23,11 +23,11 @@ const runtimeConfig = {
 
 async function loadRuntimeConfig() {
   try {
-    const response = await fetch('/api/runtime', { cache: 'no-store' });
+    const response = await fetch('./api/runtime', { cache: 'no-store' });
     if (!response.ok) throw new Error('runtime fallback');
     Object.assign(runtimeConfig, await response.json());
   } catch {
-    runtimeConfig.endpoints = ['/api/status', '/native-bridge/ports', '/devices/status', '/rhymes', '/api/action'];
+    runtimeConfig.endpoints = ['./api/status', './native-bridge/ports', './devices/status', './rhymes', './api/action'];
   }
   document.querySelector('#runtime-port').textContent = String(runtimeConfig.port || location.port || 'AUTO');
   document.querySelector('#runtime-base').textContent = runtimeConfig.base_url || location.origin;
@@ -113,7 +113,7 @@ let cachedNativeStatuses = null;
 async function fetchNativeStatuses() {
   if (cachedNativeStatuses) return cachedNativeStatuses;
   try {
-    const response = await fetch('/native-bridge/ports', { cache: 'no-store' });
+    const response = await fetch('./native-bridge/ports', { cache: 'no-store' });
     if (!response.ok) throw new Error(`native bridge http ${response.status}`);
     const payload = await response.json();
     if (payload?.ok && Array.isArray(payload.ports)) cachedNativeStatuses = payload.ports;
@@ -179,7 +179,7 @@ portGrid.addEventListener('click', async (event) => {
   if (!button) return;
   const port = button.dataset.port;
   try {
-    const response = await fetch('/api/daemons/restart', {
+    const response = await fetch('./api/daemons/restart', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
@@ -285,7 +285,7 @@ async function dispatchAction(action, params = {}) {
   const request = createAction(action, params);
   let event;
   try {
-    const response = await fetch('/api/action', {
+    const response = await fetch('./api/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
@@ -338,7 +338,7 @@ async function loadNativePortForTask(action, event) {
         bridgeMode.value = `BRIDGE: NATIVE :${loaded.port} ${action}`;
       }
     } else {
-      await fetch(`/native-bridge/load?action=${encodeURIComponent(action)}`, { cache: 'no-store' });
+      await fetch(`./native-bridge/load?action=${encodeURIComponent(action)}`, { cache: 'no-store' });
     }
   } catch {
     /* Port-Load darf die Kette nicht blockieren. */
@@ -664,7 +664,7 @@ async function lookupRhymes() {
     return;
   }
   try {
-    const response = await fetch(`/rhymes?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
+    const response = await fetch(`./rhymes?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
     if (!response.ok) throw new Error('offline fallback');
     const payload = await response.json();
     out.value = payload.rhymes.join(' · ');
@@ -726,7 +726,7 @@ async function browserMicPermission() {
 async function readDeviceStatus(selected = inputSelect.value) {
   if (bridge?.deviceStatus) return bridge.deviceStatus(selected);
   try {
-    const response = await fetch(`/devices/status?selected=${encodeURIComponent(selected)}`, { cache: 'no-store' });
+    const response = await fetch(`./devices/status?selected=${encodeURIComponent(selected)}`, { cache: 'no-store' });
     if (response.ok) return response.json();
   } catch {
     // Static preview fallback below.
@@ -871,7 +871,7 @@ document.querySelector('#noise-suppression')?.addEventListener('change', (event)
 document.querySelector('#calibrate')?.addEventListener('click', async () => {
   if (calibrationOutput) calibrationOutput.value = 'CAL: MESSE …';
   try {
-    const response = await fetch('/api/audio/calibrate', { cache: 'no-store' });
+    const response = await fetch('./api/audio/calibrate', { cache: 'no-store' });
     const payload = await response.json();
     let local = null;
     try {
@@ -916,7 +916,7 @@ function fallbackPresets() {
 async function loadPresets() {
   if (presetCache) return presetCache;
   try {
-    const response = await fetch('/api/presets', { cache: 'no-store' });
+    const response = await fetch('./api/presets', { cache: 'no-store' });
     if (!response.ok) throw new Error('preset fallback');
     presetCache = await response.json();
   } catch {
@@ -961,7 +961,7 @@ async function exportSession() {
   const input = inputSelect?.value || 'internal_mic';
   const preset = presetSelect?.value || '90s_tape';
   try {
-    const response = await fetch('/api/session/export', {
+    const response = await fetch('./api/session/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
@@ -983,7 +983,7 @@ async function exportSession() {
 
 async function loadLogs() {
   try {
-    const response = await fetch('/api/logs', { cache: 'no-store' });
+    const response = await fetch('./api/logs', { cache: 'no-store' });
     if (!response.ok) throw new Error('log fallback');
     const payload = await response.json();
     liveLog.textContent = payload.logs.join('\n');
@@ -996,10 +996,10 @@ document.querySelector('#apply-preset').addEventListener('click', applyPreset);
 document.querySelector('#export-session').addEventListener('click', exportSession);
 document.querySelector('#import-session')?.addEventListener('click', async () => {
   try {
-    const latest = await fetch('/api/session/latest', { cache: 'no-store' });
+    const latest = await fetch('./api/session/latest', { cache: 'no-store' });
     if (!latest.ok) throw new Error('keine persistierte Session');
     const body = await latest.json();
-    const replay = await fetch('/api/session/import', {
+    const replay = await fetch('./api/session/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session: body.session || body }),
@@ -1025,11 +1025,11 @@ setInterval(() => {
 // --------------------------------------------------------------------------- //
 async function hydrateFromServer() {
   try {
-    const response = await fetch('/api/state', { cache: 'no-store' });
+    const response = await fetch('./api/state', { cache: 'no-store' });
     if (!response.ok) throw new Error('state fallback');
     const state = await response.json();
     if (state?.chain?.length) {
-      const events = await fetch(`/api/events?since=0`, { cache: 'no-store' }).then((res) => (res.ok ? res.json() : { events: [] }));
+      const events = await fetch(`./api/events?since=0`, { cache: 'no-store' }).then((res) => (res.ok ? res.json() : { events: [] }));
       // Bewusst kein defaultState() hier: Hydration läuft asynchron beim Boot und
       // würde sonst eine bereits laufende Kette überschreiben (im Browser
       // beobachtet: 7 statt 23 Schritte). applyChainEvent ergänzt nur, was lokal
@@ -1061,7 +1061,7 @@ function connectEventStream(since = chainState.seq || 0) {
     return null;
   }
   if (eventStream) eventStream.close();
-  const source = new EventSource(`/api/events/stream?since=${encodeURIComponent(since)}&heartbeat=15`);
+  const source = new EventSource(`./api/events/stream?since=${encodeURIComponent(since)}&heartbeat=15`);
   eventStream = source;
   source.addEventListener('hello', (event) => {
     try {
@@ -1107,7 +1107,7 @@ const captureState = document.querySelector('#capture-state');
 
 async function refreshCapture() {
   try {
-    const response = await fetch('/api/audio/capture', { cache: 'no-store' });
+    const response = await fetch('./api/audio/capture', { cache: 'no-store' });
     if (!response.ok) throw new Error(`capture http ${response.status}`);
     const payload = await response.json();
     const status = payload.status || {};
@@ -1125,7 +1125,7 @@ async function refreshCapture() {
 
 async function openCapture() {
   try {
-    const response = await fetch('/api/audio/capture', {
+    const response = await fetch('./api/audio/capture', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
@@ -1145,7 +1145,7 @@ async function openCapture() {
 
 async function pullCaptureBlock(frames = 128) {
   try {
-    const response = await fetch('/api/audio/capture', {
+    const response = await fetch('./api/audio/capture', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
@@ -1178,8 +1178,8 @@ async function loadSessionStore() {
     // Leerer Store ist der Normalfall (frische Installation): Der Server
     // antwortet dort bewusst mit 404, der Browser würde das als Konsolenfehler
     // melden. Deshalb erst die (immer 200 liefernde) Liste abfragen und
-    // `/api/session/latest` nur holen, wenn wirklich etwas persistiert ist.
-    const list = await fetch('/api/sessions', { cache: 'no-store' });
+    // `./api/session/latest` nur holen, wenn wirklich etwas persistiert ist.
+    const list = await fetch('./api/sessions', { cache: 'no-store' });
     if (list.ok) {
       const index = await list.json();
       if (Array.isArray(index.sessions) && index.sessions.length === 0) {
@@ -1187,7 +1187,7 @@ async function loadSessionStore() {
         return { ok: false, error: 'no persisted session', sessions: [] };
       }
     }
-    const response = await fetch('/api/session/latest', { cache: 'no-store' });
+    const response = await fetch('./api/session/latest', { cache: 'no-store' });
     const payload = await response.json();
     if (!response.ok || !payload.ok) {
       if (sessionLatest) sessionLatest.value = 'SESSION: keine persistierte Kette';
@@ -1208,7 +1208,7 @@ async function loadSessionStore() {
 
 async function restoreLatestSession() {
   try {
-    const response = await fetch('/api/session/restore', {
+    const response = await fetch('./api/session/restore', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       cache: 'no-store',
@@ -1238,7 +1238,7 @@ const dspCoreState = document.querySelector('#dsp-core-state');
 let dspCore = null;
 
 async function initDspCore() {
-  dspCore = await loadKaossDsp({ url: '/wasm/kaoss_dsp.wasm' });
+  dspCore = await loadKaossDsp({ url: './wasm/kaoss_dsp.wasm' });
   if (dspCoreState) {
     dspCoreState.value =
       dspCore.engine === 'wasm'

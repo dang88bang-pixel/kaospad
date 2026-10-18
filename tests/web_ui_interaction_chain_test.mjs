@@ -350,9 +350,12 @@ globalThis.URL = Object.assign(globalThis.URL, {
   createObjectURL: (blob) => { const url = `blob:stub/${blobStore.size}`; blobStore.set(url, blob); return url; },
   revokeObjectURL: () => {},
 });
+// Zähler offener Fetches: settle() wartet darauf, statt fester Sleeps (CI-Last-Flake).
+let pendingFetches = 0;
 globalThis.fetch = async (url, options) => {
-  const target = String(url).startsWith('http') ? url : baseUrl + url;
+  const target = new URL(String(url), baseUrl).href; // relative Pfade wie im Browser auflösen
   if (process.env.KAOSS_UI_DEBUG) console.error(`FETCH START ${options?.method || 'GET'} ${target}`);
+  pendingFetches += 1;
   try {
     const response = await realFetch(target, options);
     if (process.env.KAOSS_UI_DEBUG) console.error(`FETCH ${options?.method || 'GET'} ${target} -> ${response.status}`);
@@ -360,6 +363,8 @@ globalThis.fetch = async (url, options) => {
   } catch (error) {
     if (process.env.KAOSS_UI_DEBUG) console.error(`FETCH FAIL ${target} -> ${error.message}`);
     throw error;
+  } finally {
+    pendingFetches -= 1;
   }
 };
 
@@ -421,7 +426,11 @@ check('browser inputs populated', el('browser-device-select').innerHTML.includes
 // --------------------------------------------------------------------------- //
 // 2. Benutzerkette Schritt für Schritt (echte Events)
 // --------------------------------------------------------------------------- #
-async function settle(ms = 120) { await sleep(ms); }
+/** Kurz warten, dann bis alle Fetches beantwortet sind (kein fester Sleep allein). */
+async function settle(ms = 120) {
+  await sleep(ms);
+  await waitFor('offene Fetches beantwortet', () => pendingFetches === 0, 15000);
+}
 
 el('input-select').value = 'usb_c_audio';
 el('input-select').dispatchEvent('change');
@@ -589,7 +598,9 @@ check('transcribe blocked before mic', el('transcribe-output').value.includes('B
 el('chain-reset').click();
 await settle(200);
 el('run-full-chain').click();
-await sleep(900);
+// Feste 900-ms-Sleeps waren unter CPU-Last zu kurz (14 von 23 Schritten). Auf Vollständigkeit warten.
+await waitFor('vollständige Kette: 23 Schritte', () => chain.summary().length >= 23, 20000);
+await settle();
 
 const summary = chain.summary();
 check('full chain executed', summary.length === 23, summary);
@@ -677,7 +688,8 @@ check('port cards show pid', el('port-grid').innerHTML.includes('pid '), el('por
   const requested = [];
   const original = globalThis.fetch;
   const makeStub = (sessions) => async (url, options) => {
-    const path = String(url).replace(baseUrl, '');
+    const resolved = new URL(String(url), baseUrl);
+    const path = resolved.pathname + resolved.search;
     requested.push(`${options?.method || 'GET'} ${path}`);
     if (path.startsWith('/api/sessions')) return jsonResponse({ ok: true, store: 'dist/sessions', sessions, restored: { ok: false } });
     if (path.startsWith('/api/session/latest')) {

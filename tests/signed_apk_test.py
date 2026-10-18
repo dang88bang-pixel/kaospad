@@ -5,7 +5,10 @@ import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-APK = ROOT / "releases" / "KaossBeatboxStudio-v5.0.0-Universal-Signed.apk"
+APK_NAME = "KaossBeatboxStudio-v5.0.0-Universal-Signed.apk"
+RELEASE_KEY = ROOT / "android" / "signing" / "kaoss-release-key.pem"
+# Mit Release-Schlüssel: releases/. Ohne (Klon): Wegwerf-Test-Signatur in dist/.
+APK = (ROOT / "releases" / APK_NAME) if RELEASE_KEY.exists() else (ROOT / "dist" / "signed-ephemeral" / APK_NAME)
 
 
 def main() -> int:

@@ -1202,6 +1202,16 @@ def main() -> int:
             detail={"name": str(spec["name"]), "task": str(spec.get("task", ""))},
         )
     WATCHDOG.start()
+    # P1-10: Lebenszeichen zusätzlich aus einem eigenen Hintergrund-Thread. Ohne
+    # diesen Heartbeat meldete der Watchdog im Leerlauf (ohne HTTP-Anfragen)
+    # Fehlalarme und markierte alle Rollen als degraded. Der Thread läuft im
+    # selben Prozess; ein blockierter Server-Prozess lässt ihn trotzdem verstummen.
+    def _heartbeat_loop(interval_s: float = 1.0) -> None:
+        while True:
+            beat_daemons()
+            time.sleep(interval_s)
+
+    threading.Thread(target=_heartbeat_loop, name="kaoss-heartbeat", daemon=True).start()
     hooks = bug_report.install_excepthook(
         context={"app": "kaoss-one-app", "version": APP_VERSION, "port": port},
         report_dir=BUG_REPORT_DIR,

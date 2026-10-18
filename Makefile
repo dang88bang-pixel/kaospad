@@ -1,4 +1,4 @@
-.PHONY: scaffold-all-platforms build wasm test test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui test-ui-list test-ui-install test-native-audio-bridge test-release-guard test-gradle-wrapper demo-chain run-app run-localhost-ipc replay-latest clean release-bundle install-toolchains signed-apk test-signed-apk
+.PHONY: scaffold-all-platforms build wasm test test-strict test-native-dsp-latency test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-ui test-ui-list test-ui-install test-native-audio-bridge test-release-guard test-gradle-wrapper demo-chain run-app run-localhost-ipc replay-latest clean release-bundle install-toolchains signed-apk test-signed-apk
 
 scaffold-all-platforms:
 	@echo "Scaffold already present for Android, desktop, engines, tests, web and CI."
@@ -22,6 +22,18 @@ wasm:
 	./scripts/build_wasm.sh
 
 test: test-native-dsp-latency test-resilience test-watchdog test-log-rotation test-bug-report test-engine-service test-dex-builder test-real-asr test-flatbuffers-pcm test-dsp-error-handling test-failure-simulation test-offline-daemons test-web test-permissions test-web-contract test-one-app test-action-chain test-action-chain-ui test-web-ui-chain test-zero-cloud test-session-store test-chain-attributes test-client-hal test-live-capture test-sse test-wasm-parity test-wasm-cross-runtime test-ui-list test-ui test-signed-apk test-native-audio-bridge test-release-guard test-gradle-wrapper
+
+# Strenger Lauf: wie `make test`, aber jede übersprungene Gate-Meldung (fehlender
+# Browser, wasmtime, pocketsphinx, androguard) macht den Lauf rot. `make test`
+# bleibt tolerant, damit die Suite ohne Zusatzinstallationen lauffähig ist.
+test-strict:
+	@mkdir -p dist
+	@$(MAKE) test > dist/test-last.log 2>&1; st=$$?; cat dist/test-last.log; \
+	if [ $$st -ne 0 ]; then echo "test-strict FAILED: make test rot (exit $$st)"; exit $$st; fi; \
+	if grep -Eq 'SKIP|übersprungen' dist/test-last.log; then \
+		echo "test-strict FAILED: übersprungene Gates:"; grep -E 'SKIP|übersprungen' dist/test-last.log; exit 1; \
+	fi; \
+	echo "test-strict: alle Gates ausgeführt, keine Übersprünge"
 
 test-native-dsp-latency: build
 	./build/audio_latency_e2e_test --max-latency=1.2ms

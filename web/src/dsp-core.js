@@ -15,7 +15,7 @@
 export const LIMITER_DBFS = -3.2;
 export const SILENCE_DBFS = -120;
 export const TRANSIENT_KINDS = ['NONE', 'KICK808', 'SNARE_CLAP', 'HAT_ROLL'];
-export const WASM_URL = '/wasm/kaoss_dsp.wasm';
+export const WASM_URL = new URL('../wasm/kaoss_dsp.wasm', import.meta.url).href;
 
 // --------------------------------------------------------------------------- //
 // JS-Spiegel des C++-Kerns (Fallback, wenn kein .wasm gebaut wurde)
@@ -526,7 +526,7 @@ function createJsCore() {
 // ------------------------------------------------------------------------- //
 async function emscriptenModuleBuilt() {
   try {
-    const response = await fetch('/api/wasm', { cache: 'no-store' });
+    const response = await fetch('./api/wasm', { cache: 'no-store' });
     if (!response.ok) return false;
     const status = await response.json();
     return Boolean(status.emscripten_module);
