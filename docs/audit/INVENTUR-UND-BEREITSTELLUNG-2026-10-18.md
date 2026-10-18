@@ -193,7 +193,7 @@ Echte Hardware-Messungen (USB-Interfaces, BLE-Mikrofone, Latenz), lizenzierte Mo
 4. **Ich:** Stufe B2/B3 (echte Desktop-, Android- und Web-Artefakte) auf diesem Branch angehen. Stufe B5 (Apple-, Windows-Zertifikate) bleibt bei Ihnen.
 5. **Hinweis:** Stufe C (Hardware, Modelle, Lizenzen, Store) liegt außerhalb dieser Sandbox.
 
-## Stand nach Stufe A (Commit `b799959`)
+## Stand nach Stufe A (Commits `b799959`, `7de4f49`)
 
 **Verifiziert:**
 
@@ -211,7 +211,7 @@ Echte Hardware-Messungen (USB-Interfaces, BLE-Mikrofone, Latenz), lizenzierte Mo
 **Nicht verifiziert (ehrlich benannt):**
 
 - **Playwright-Specs (`make test-ui`)** sind nicht gelaufen, weil Chromium in der Sandbox nicht lädt. Die Pfadumstellung in `app.js` betrifft aber genau diese Spezifikationen. Das Playwright-Job auf `main` war vorher grün. Bitte den CI-Lauf auf dem Branch prüfen.
-- **Ob die Änderungen den roten Main-CI-Schritt „Web/UI contract“ beheben,** ist unbekannt. Lokal war er vor und nach den Änderungen grün, die Logs sind nicht abrufbar (A2).
+- **Ursache des roten Main-CI-Schritts „Web/UI contract“ (wahrscheinlich):** Die GitHub-Logs sind aus der Sandbox nicht abrufbar. Unter CPU-Last reproduziert sich der Fehler jedoch: `test-web-ui-chain` klickte „Vollständige Kette“, wartete fest 900 ms und prüfte dann 23 Schritte. Unter Last waren erst 14 fertig. Der Test wartet jetzt auf die Bedingung (Commit `7de4f49`). Vorher 0 von 2 grün unter Last, nachher 3 von 3 (4 Lastprozesse) und 2 von 2 (8 Lastprozesse). Sicher bestätigt ist das nicht, da das Log fehlt. Bitte den nächsten CI-Lauf prüfen (A2).
 - **Keine echten Android-, Desktop- oder Web-Release-Builds** in Stufe A. Das ist Stufe B.
 - **Cargo.lock** wurde nicht mit `cargo` gegengeprüft (Rust ist in der Sandbox nicht installiert).
 
