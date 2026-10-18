@@ -193,6 +193,23 @@ Echte Hardware-Messungen (USB-Interfaces, BLE-Mikrofone, Latenz), lizenzierte Mo
 4. **Ich:** Stufe B2/B3 (echte Desktop-, Android- und Web-Artefakte) auf diesem Branch angehen. Stufe B5 (Apple-, Windows-Zertifikate) bleibt bei Ihnen.
 5. **Hinweis:** Stufe C (Hardware, Modelle, Lizenzen, Store) liegt außerhalb dieser Sandbox.
 
+## Bereitstellung (2026-10-18)
+
+| Schritt | Ergebnis |
+|---|---|
+| Pull Request #6 `arena/5dc65cd7-kaospad` → `main` | **Gemergt** (Merge-Commit `87ebc60`). PR-CI grün: alle 4 Jobs, einschließlich „Offline Action & Interaction Chain“ und „Playwright Browser UI“ (letzterer erstmals mit den Änderungen geprüft). |
+| Main-CI auf dem Merge-Commit (`audio-dsp-benchmark`, Run `39168429436`) | **Grün** (4/4 Jobs). Der rote Stand auf `main` (Run `34730881743`) ist damit behoben. |
+| `multiplatform-ci-cd.yml` | YAML parst; läuft nur bei Tags `v*.*.*`. Kein Tag gesetzt (siehe Stufe B). |
+| Web/PWA-Paket `KaossBeatboxStudio-WebAssembly-Offline.zip` | Lokal gebaut und statisch geprüft: 13 Dateien, alle Referenzen vorhanden, MIME-Typen korrekt, `wasm_built=false` (JS-Spiegel als DSP-Fallback). SHA-256 des lokalen Builds: `ae73a2cc7db6e93cfaf3db06886d31a3ab6e41b1adadc786b2711c9c3bdc1ba4`. |
+| GitHub-Release `v5.0.0` (Web/PWA) | **Nicht veröffentlicht.** Der Upload nach `uploads.github.com` ist aus der Sandbox nicht erreichbar (EOF), und das Auslösen des Workflows `release-publisher.yml` verweigert der Integrations-Token (HTTP 403). Es blieb kein Release und kein Tag zurück. |
+
+**Nutzer-Aktion für die Veröffentlichung:** GitHub → Actions → „Release Publisher“ → „Run workflow“ → Branch `main`, Tag `v5.0.0`. Der Workflow baut das Paket neu, lädt es hoch und legt das Release an.
+
+**Weiterhin offen (nicht Teil der Web-Bereitstellung):**
+- Keystore-Secret `KAOSS_KEYSTORE_BASE64` und Passwörter (B1). Ohne Secret keine signierte Android-APK; das Fallback-Passwort `android` bleibt bis dahin in CI und Gradle.
+- Stufe B: echte Desktop-, macOS- und Windows-Builds sowie Notarisierung und Codesigning (B2, B5). Die Scaffold-Skripte erzeugen keine echten Artefakte.
+- Stufe C (Hardware, Modelle, Lizenzen, Store) liegt außerhalb der Sandbox.
+
 ## Stand nach Stufe A (Commits `b799959`, `7de4f49`)
 
 **Verifiziert:**
