@@ -1,27 +1,29 @@
 Pfad;Bereich;Zeilen;Typ;Referenzen_in_Tests_Make_CI;Status;Befund
 .github/workflows/android-signed-apk.yml;CI/CD (GitHub Actions);95;.yml;0;PROBLEM;"Trigger nur auf alten Branch arena/01a085c8-kaospad → läuft für aktuellen Stand nie; Keystore-Fallback mit Default-Passwort."
 .github/workflows/audio-dsp-benchmark.yml;CI/CD (GitHub Actions);155;.yml;0;PROBLEM;"Aktueller main-Run 34730881743 rot: Job ""Offline Action & Interaction Chain"", Schritt ""Web/UI contract"" (Log nicht abrufbar; lokal alle 3 Targets grün mit Node 20 und 22)."
-.github/workflows/multiplatform-ci-cd.yml;CI/CD (GitHub Actions);245;.yml;1;BLOCKER;"YAML-Parsefehler Z.107 und Z.231 (Step-Name mit "": "" unquotiert) → 0 Jobs, Release-Pipeline startet nicht. Zusätzlich: Keystore-Fallback mit Passwort ""android"" (Z.82-99)."
+.github/workflows/multiplatform-ci-cd.yml;CI/CD (GitHub Actions);245;.yml;1;PROBLEM;"P0-1 behoben: Step-Namen Z.107/231 gequotet, YAML parst (7 Jobs). Offen: Keystore-Fallback mit Passwort ""android"" (Z.82-99) bis Secret KAOSS_KEYSTORE_BASE64 hochgeladen ist (B1)."
 .github/workflows/release-publisher.yml;CI/CD (GitHub Actions);26;.yml;0;PROBLEM;"Publiziert nur PWA-ZIP; Tag wird per Input gesetzt, keine Verifikation außer Build."
 .gitignore;Root/Konfiguration;16;(ohne);0;LIVE;
 CMakeLists.txt;Root/Konfiguration;33;.txt;1;LIVE;
 Dockerfile.offline-build;Root/Konfiguration;9;.offline-build;0;UNGEPRÜFT;Docker-Build nicht ausgeführt (kein Docker in Sandbox). Nutzt nodejs/npm von Debian.
 LICENSE;Root/Konfiguration;21;(ohne);1;LIVE;
-Makefile;Root/Konfiguration;166;(ohne);2;PROBLEM;make test endet mit Exit 0 trotz 5 SKIP-Meldungen (Playwright, wasmtime, pocketsphinx, androguard).
+Makefile;Root/Konfiguration;178;(ohne);2;LIVE;P1-1: Target test-strict ergänzt (rot bei übersprungenen Gates). make test unverändert tolerant (Exit 0).
 README.md;Dokumentation;348;.md;0;DOKU;
 REPORT.md;Dokumentation;188;.md;2;PROBLEM;"Stand 2026-09-12; CI-Aussagen veraltet."
 VALIDATION_REPORT.md;Dokumentation;348;.md;0;PROBLEM;"Verweist auf ""4/4 Jobs grün"" (alter Run); aktueller main-CI rot."
 android/app/build.gradle.kts;Android Build/Signing;67;.kts;0;PROBLEM;"Ohne Keystore-Env wird Release unsigniert gebaut; Default-Passwort ""android"" als Fallback."
 android/app/src/main/AndroidManifest.xml;Android nativ/Kotlin;26;.xml;4;LIVE;"Permissions geprüft; kein Foreground-Service (TODO §8.1)."
 android/app/src/main/assets/www/README.txt;Android-Assets (Kopie web/);5;.txt;1;LIVE;
-android/app/src/main/assets/www/index.html;Android-Assets (Kopie web/);223;.html;6;LIVE;
-android/app/src/main/assets/www/manifest.webmanifest;Android-Assets (Kopie web/);1;.webmanifest;1;LIVE;
+android/app/src/main/assets/www/icons/icon-192.png;Android-Assets (Kopie web/);;.png;0;LIVE;Kopie von web/icons/icon-192.png.
+android/app/src/main/assets/www/icons/icon-512.png;Android-Assets (Kopie web/);;.png;0;LIVE;Kopie von web/icons/icon-512.png.
+android/app/src/main/assets/www/index.html;Android-Assets (Kopie web/);224;.html;6;LIVE;Kopie von web/ synchronisiert (Stufe A).
+android/app/src/main/assets/www/manifest.webmanifest;Android-Assets (Kopie web/);1;.webmanifest;1;LIVE;Kopie von web/ synchronisiert (Stufe A).
 android/app/src/main/assets/www/src/action-chain.js;Android-Assets (Kopie web/);426;.js;4;LIVE;
-android/app/src/main/assets/www/src/app.js;Android-Assets (Kopie web/);1278;.js;6;LIVE;
+android/app/src/main/assets/www/src/app.js;Android-Assets (Kopie web/);1278;.js;6;LIVE;Kopie von web/src/app.js (relative Pfade) synchronisiert.
 android/app/src/main/assets/www/src/audio-engine.js;Android-Assets (Kopie web/);269;.js;3;LIVE;
-android/app/src/main/assets/www/src/dsp-core.js;Android-Assets (Kopie web/);658;.js;5;LIVE;
+android/app/src/main/assets/www/src/dsp-core.js;Android-Assets (Kopie web/);658;.js;5;LIVE;Kopie von web/src/dsp-core.js synchronisiert.
 android/app/src/main/assets/www/src/styles.css;Android-Assets (Kopie web/);129;.css;1;LIVE;
-android/app/src/main/assets/www/sw.js;Android-Assets (Kopie web/);4;.js;4;LIVE;
+android/app/src/main/assets/www/sw.js;Android-Assets (Kopie web/);46;.js;4;LIVE;Kopie von web/sw.js (v14) synchronisiert.
 android/app/src/main/cpp/CMakeLists.txt;Android nativ/Kotlin;24;.txt;1;LIVE;Von Test/Makefile/Modul referenziert.
 android/app/src/main/cpp/aaudio_input_engine.cpp;Android nativ/Kotlin;115;.cpp;3;UNGEPRÜFT (Gerät);"AAudio-Pfad kompiliert nur mit NDK; nicht auf Gerät getestet."
 android/app/src/main/cpp/audio_flinger_hook.cpp;Android nativ/Kotlin;54;.cpp;9;SHIM;Deterministischer HAL-Simulator (Stub laut Audit), Gerät erforderlich.
@@ -51,7 +53,7 @@ android/gradlew;Android Build/Signing;8;(ohne);1;LIVE;
 android/local.properties.example;Android Build/Signing;2;.example;0;LIVE;
 android/settings.gradle.kts;Android Build/Signing;4;.kts;0;LIVE;
 android/signing/kaoss-release-cert.pem;Android Build/Signing;0;.pem;1;PROBLEM;"Zertifikat ohne Privatschlüssel im Repo; make test überschreibt es bei jedem Lauf (neues Schlüsselpaar)."
-app.py;Root/Konfiguration;1232;.py;14;PROBLEM;Health/State/Chain/Origin-Guard OK (Smoke-Test). Watchdog meldet im Leerlauf Fehlalarme: alle 6 Rollen degraded nach ~15 s (P1-10).
+app.py;Root/Konfiguration;1242;.py;14;LIVE;P1-10/A7 behoben: Heartbeat-Thread (1 s) neben dem Watchdog. Verifiziert: 25 s Leerlauf, restarts 0, alle Rollen healthy.
 backups/phase2/engine_service.py.bak;Backups (Hygiene);50;.bak;0;HYGIENE;"Backup im Repo; gehört in Git-Historie, nicht in Arbeitsbaum."
 backups/phase2/glb.py.bak;Backups (Hygiene);77;.bak;0;HYGIENE;Backup im Repo.
 backups/phase2/localhost_ipc_suite.py.bak;Backups (Hygiene);401;.bak;0;HYGIENE;Backup im Repo.
@@ -61,7 +63,9 @@ backups/phase3/audio_capture.py;Backups (Hygiene);686;.py;2;HYGIENE;Kopie von en
 backups/phase3/build_signed_apk.py.bak;Backups (Hygiene);747;.bak;1;HYGIENE;Backup im Repo.
 backups/phase3/local_audio_probe.py;Backups (Hygiene);50;.py;1;HYGIENE;Kopie von engines/local_audio_probe.py im Repo.
 backups/phase3/localhost_ipc_suite.py;Backups (Hygiene);410;.py;3;HYGIENE;Kopie von engines/localhost_ipc_suite.py im Repo.
-desktop/Cargo.toml;Desktop (Rust);7;.toml;0;PROBLEM;Kein Cargo.lock im Repo → Rust-Build nicht reproduzierbar (aktuell ohne Dependencies).
+desktop/Cargo.lock;Desktop (Rust);7;.lock;0;LIVE;P1-7 behoben: Lockfile v3 (keine Abhängigkeiten). Nicht mit cargo gegengeprüft.
+desktop/Cargo.toml;Desktop (Rust);7;.toml;0;PROBLEM;Cargo.lock ergänzt (P1-7, Stufe A, Lockfile v3 ohne Abhängigkeiten). Offen: Desktop-Build ist Stufe B.
+desktop/src-tauri/Cargo.lock;Desktop (Rust);7;.lock;0;LIVE;P1-7 behoben: Lockfile v3 (keine Abhängigkeiten). Nicht mit cargo gegengeprüft.
 desktop/src-tauri/Cargo.toml;Desktop (Rust);7;.toml;0;PROBLEM;"Keine Tauri-Abhängigkeit, Crate ohne Dependencies; Duplikat zu desktop/Cargo.toml."
 desktop/src-tauri/src/audio_host.rs;Desktop (Rust);25;.rs;0;PROBLEM;Divergiert von desktop/src/audio_host.rs (Duplikat).
 desktop/src-tauri/src/daemon_manager.rs;Desktop (Rust);16;.rs;0;LIVE;
@@ -114,9 +118,10 @@ releases/KaossBeatboxStudio-v5.0.0-Universal-Signed.apk.sha256;Release-Artefakte
 releases/ONLINE_ALTERNATIVEN.md;Release-Artefakte;57;.md;0;DOKU;
 releases/PARTS_AUDIT.md;Release-Artefakte;223;.md;0;DOKU;
 releases/README.md;Release-Artefakte;16;.md;0;DOKU;
+requirements-dev.txt;Root/Konfiguration;11;.txt;0;LIVE;"P1-7 behoben: Pins flatbuffers 25.12.19, ziglang 0.17.0, wasmtime 49.0.0; optionale pocketsphinx/androguard auskommentiert. Verifiziert: wasm-cross-runtime 177 Checks statt SKIP."
 scripts/audit_inventory.py;Build-Skripte;319;.py;0;OHNE TESTBEZUG;
 scripts/build_appimage.sh;Build-Skripte;10;.sh;2;SCAFFOLD;Kopiert Rust-Binary als .AppImage (kein AppImage-Format) oder schreibt Textdatei.
-scripts/build_signed_apk.py;Build-Skripte;726;.py;1;LIVE;
+scripts/build_signed_apk.py;Build-Skripte;755;.py;1;LIVE;"P0-4 behoben: getracktes Zertifikat wird nie überschrieben; ohne Release-Key Wegwerf-Signatur nach dist/signed-ephemeral/ mit Warnung."
 scripts/build_wasm.sh;Build-Skripte;174;.sh;7;LIVE;
 scripts/build_windows_installer.ps1;Build-Skripte;3;.ps1;1;SCAFFOLD;"Schreibt Textdatei ""scaffold"" als .msi → Release-Guard lehnt ab."
 scripts/create_universal_dmg.sh;Build-Skripte;5;.sh;1;SCAFFOLD;"Schreibt Textdatei ""scaffold"" als .dmg → Release-Guard lehnt ab (min. 256 kB)."
@@ -136,7 +141,7 @@ tests/audio_latency_e2e_test.cpp;Tests;28;.cpp;1;TEST;"Test-Suite; im make test-
 tests/brickwall_limiter_test.cpp;Tests;34;.cpp;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/bug_report_test.py;Tests;171;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/client_hal_orchestrator_test.py;Tests;60;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
-tests/dex_builder_test.py;Tests;305;.py;3;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
+tests/dex_builder_test.py;Tests;307;.py;3;TEST;APK-Pfad wie signed_apk_test.py (releases/ oder dist/signed-ephemeral/).
 tests/dsp_error_handling_test.py;Tests;123;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/dsp_parity_harness.cpp;Tests;175;.cpp;5;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/dsp_wasm_parity_test.mjs;Tests;311;.mjs;10;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
@@ -156,7 +161,7 @@ tests/real_asr_test.py;Tests;242;.py;1;TEST;"Test-Suite; im make test-Lauf entha
 tests/release_artifact_guard_test.py;Tests;151;.py;2;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/resilience_test.py;Tests;346;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/session_persist_replay_test.py;Tests;274;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
-tests/signed_apk_test.py;Tests;41;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
+tests/signed_apk_test.py;Tests;44;.py;1;TEST;APK-Pfad: releases/ mit Release-Key, sonst dist/signed-ephemeral/.
 tests/sse_events_stream_test.py;Tests;269;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/sse_reducer_hygiene_test.mjs;Tests;70;.mjs;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/stress_error_resilience_test.py;Tests;168;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
@@ -166,15 +171,17 @@ tests/ui/playwright.config.mjs;Tests;39;.mjs;3;TEST;"Test-Suite; im make test-La
 tests/wasm_cross_runtime_test.py;Tests;231;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/watchdog_test.py;Tests;157;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
 tests/web_functional_contract_test.py;Tests;245;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
-tests/web_ui_interaction_chain_test.mjs;Tests;720;.mjs;2;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
+tests/web_ui_interaction_chain_test.mjs;Tests;721;.mjs;2;TEST;DOM-Stub löst relative URLs gegen baseUrl auf (new URL). 112 UI-Checks grün (Node 20 und 22).
 tests/zero_cloud_socket_guard_test.py;Tests;156;.py;1;TEST;"Test-Suite; im make test-Lauf enthalten (Verifikation siehe Bericht)."
-web/index.html;Web/PWA;223;.html;6;LIVE;"Enthält UI-Labels ""shim"" (24-bit capture shim, LC3plus shim) – ehrliche Kennzeichnung, aber UI-Text."
-web/manifest.webmanifest;Web/PWA;1;.webmanifest;1;PROBLEM;icons: [] → keine Installierbarkeit als PWA (keine 192/512-Icons vorhanden).
+web/icons/icon-192.png;Web/PWA;;.png;0;LIVE;P1-3: PWA-Icon 192 px (orangefarbenes K auf #111318), erzeugt per Python/zlib.
+web/icons/icon-512.png;Web/PWA;;.png;0;LIVE;P1-3: PWA-Icon 512 px, maskable/any.
+web/index.html;Web/PWA;224;.html;6;LIVE;Favicon und apple-touch-icon auf PNG-Icons (P1-3).
+web/manifest.webmanifest;Web/PWA;1;.webmanifest;1;LIVE;P1-3 behoben: Icons 192/512 (any + maskable), scope/id.
 web/package.json;Web/PWA;7;.json;1;LIVE;Von Test/Makefile/Modul referenziert.
 web/src/action-chain.js;Web/PWA;426;.js;4;LIVE;Von Test/Makefile/Modul referenziert.
-web/src/app.js;Web/PWA;1278;.js;6;PROBLEM;"21 absolute fetch-Pfade (""/api/…""); README behauptet relative Pfade. Android-WebView und file://-Preview betroffen."
+web/src/app.js;Web/PWA;1278;.js;6;LIVE;P1-6 behoben: alle absoluten Pfade auf ./ umgestellt (29 Stellen).
 web/src/audio-engine.js;Web/PWA;269;.js;3;LIVE;Von Test/Makefile/Modul referenziert.
-web/src/dsp-core.js;Web/PWA;658;.js;5;PROBLEM;"WASM_URL = ""/wasm/kaoss_dsp.wasm"" (absolut); in Android-APK nicht vorhanden → JS-Spiegel."
+web/src/dsp-core.js;Web/PWA;658;.js;5;LIVE;P1-6 behoben: WASM_URL via import.meta.url, fetch(./api/wasm).
 web/src/styles.css;Web/PWA;129;.css;1;LIVE;Von Test/Makefile/Modul referenziert.
-web/sw.js;Web/PWA;4;.js;4;PROBLEM;"Cache-first ohne Netzwerk-Revalidierung, alte Caches werden nicht gelöscht; Version manuell. WASM-Modul nicht im Cache."
+web/sw.js;Web/PWA;46;.js;4;LIVE;P1-4 behoben: Cache kaoss-offline-v14-netfirst, Netzwerk-zuerst, alte Caches werden gelöscht.
 web/wasm/dsp_core_wasm.cpp;Web/PWA;132;.cpp;2;LIVE;"Wird über scripts/build_wasm.sh (Zig/Emscripten) gebaut; Emscripten-Glue (dsp_core.mjs) lokal nicht erzeugt."

@@ -1,6 +1,7 @@
 # Inventur & Bereitstellungsbericht – Kaoss Pad / AI Beatbox Studio
 
 Stand: **2026-10-18** · Branch: `arena/5dc65cd7-kaospad` · Basis-Commit: `2f2d068` (identisch mit `main`)
+**Umsetzung Stufe A:** Commit `b799959` (Code) auf demselben Branch; Status je Maßnahme siehe §6 und Abschnitt „Stand nach Stufe A“.
 Ergänzende Datei-Inventur (alle 179 getrackten Dateien): [`INVENTUR-2026-10-18.csv`](INVENTUR-2026-10-18.csv)
 
 ---
@@ -12,7 +13,7 @@ Ergänzende Datei-Inventur (alle 179 getrackten Dateien): [`INVENTUR-2026-10-18.
 | Ist das Repo heute **100 % bereitstellbar**? | **Nein.** Die lokale Offline-App läuft, aber die Release-Pipeline ist defekt und keine der Release-Artefakte für macOS, Windows und Linux ist ein echtes Produkt. |
 | Erfüllt das Repo seine eigene Definition of Done (`docs/FULL_IMPLEMENTATION_TODO.md` §16)? | **Nein.** Alle 14 Punkte sind offen. |
 | Fortschritt laut TODO-Checkboxen | **78 erledigt, 11 teilweise, 389 offen** → ca. **16 %** (eigene Zählung per Regex über `docs/FULL_IMPLEMENTATION_TODO.md`). |
-| Was ist **sofort** bereitstellbar? | Die **lokale One-App** (Python-Server + PWA) als Beta/Preview, nach Behebung der Web-Befunde P1-4 bis P1-6. |
+| Was ist **sofort** bereitstellbar? | Die **lokale One-App** (Python-Server + PWA) als Beta/Preview. Die Web-Befunde P1-3 bis P1-6 und P1-10 sind seit `b799959` behoben (Stufe A). |
 | Was **blockiert** eine echte Auslieferung? | (1) kaputte CI-Datei, (2) Scaffold-Artefakte für Desktop/macOS/Windows, (3) Signierschlüssel nicht im Repo, (4) rote Haupt-CI. |
 
 **Wichtig zu „100 %“:** Vollständige Bereitstellung im Sinne der TODO-DoD ist in dieser Sandbox **nicht erreichbar**. Es fehlen Hardware-Tests (USB/BLE/Mikrofon), lizenzierte ML-Gewichte (Whisper-TFLite, MiDaS, MediaPipe), Store-/Notarisierungs-Zertifikate und Signierschlüssel. Ein realistisches Ziel ist daher „alle Artefakte der Release-Matrix werden gebaut, verifiziert und veröffentlicht; Shims sind klar gekennzeichnet“ (Abschnitt 6).
@@ -70,6 +71,8 @@ Legende: **LIVE** lauffähig und durch Tests abgedeckt · **SHIM** gleiche Schni
 ---
 
 ## 4. Befunde nach Priorität
+
+> Statusangaben je Befund siehe §6 (Stufe A) und Abschnitt „Stand nach Stufe A“. Die Beschreibungen unten geben den Befund vor der Umsetzung wieder.
 
 ### P0 – blockiert jede Auslieferung
 
@@ -134,14 +137,14 @@ Folge: Die Android-APK lädt `file:///android_asset/www/index.html` (`MainActivi
 
 | Dokument | Aussage | Realität heute |
 |---|---|---|
-| `README.md:86` | „All browser calls use relative paths“ | 21 absolute `fetch`-Pfade in `web/src/app.js` |
+| `README.md:86` | „All browser calls use relative paths“ | **Stufe A erledigt:** keine absoluten Browser-Pfade mehr in `web/` (geprüft per grep: fetch, EventSource, serviceWorker, href/src). |
 | `REPORT.md` / `VALIDATION_REPORT.md` | CI „4/4 Jobs grün“ (Run 34722066403) | Aktueller `main`-CI ist rot (P0-2) |
 | `releases/INTEGRATION_STATUS.md` | „Android Cloud-APK Build grün“ | Bezieht sich auf alten Run und alten Branch; für aktuellen Stand nicht belegt |
 | `docs/FULL_IMPLEMENTATION_TODO.md` §8.1 | Gradle-Wrapper-Jar „offline nicht erzeugbar“ | Jar liegt im Repo (43 kB, `GradleWrapperMain.class`) |
 | `docs/FULL_IMPLEMENTATION_TODO.md` Kopf | Stand 2026-09-12, Branch `arena/01a08bf1` | Aktuell 2026-10-18; Branch heute `arena/5dc65cd7` |
-| `Makefile` / `make test` | „Alle Gates grün“ (impliziert) | 5 SKIPs, Exit 0 (P1-1) |
-| `releases/README.md` | „Signierte APK, Schlüssel offline“ | Schlüssel nicht im Repo, Cert ohne Privatschlüssel (P0-4) |
-| `docs/audit/INVENTAR.csv` | Vollständige Dateiinventur | 66 von 179 Dateien fehlen (P2-1) |
+| `Makefile` / `make test` | „Alle Gates grün“ (impliziert) | **Stufe A:** `make test-strict` ergänzt (rot bei SKIP). `make test` bleibt Exit 0; lokal werden noch 4 Gates übersprungen (androguard, pocketsphinx, flatc, Playwright-Chromium). |
+| `releases/README.md` | „Signierte APK, Schlüssel offline“ | Schlüssel nicht im Repo, Cert ohne Privatschlüssel (P0-4). **Stufe A:** Signierskript überschreibt das Cert nicht mehr; ohne Schlüssel nur Wegwerf-Signatur in `dist/`. Die Doku selbst ist noch nicht angepasst. |
+| `docs/audit/INVENTAR.csv` | Vollständige Dateiinventur | 66 von 179 Dateien fehlen (P2-1). Ersetzt durch `INVENTUR-2026-10-18.csv` (186 Dateien nach Stufe A). |
 
 ---
 
@@ -151,15 +154,19 @@ Die Stufen bauen aufeinander auf. Die Spalte „Wer“ zeigt, was ich im Repo um
 
 ### Stufe A – Beta der lokalen App (Web/PWA + Server)
 
-| # | Maßnahme | Wer | Aufwand |
-|---|---|---|---|
-| A1 | P0-1: zwei Step-Namen quoten | Ich (verifiziert) | minimal |
-| A2 | P0-2: Log des fehlgeschlagenen Schritts sichten, Ursache beheben | Sie (GitHub-UI) + ich | klein–mittel |
-| A3 | P1-4 bis P1-6: Icons, Service-Worker-Versionierung, relative Pfade | Ich | mittel |
-| A4 | P1-1: SKIPs als Fehler oder mindestens sichtbar machen | Ich | klein |
-| A5 | P1-7: `requirements.txt` und `Cargo.lock` anlegen | Ich | klein |
-| A6 | Doku korrigieren (Abschnitt 5) | Ich | klein |
-| A7 | P1-10: Watchdog-Heartbeat vom Antwortpfad lösen (Hintergrund-Thread), Fehlalarme im Leerlauf beseitigen | Ich | klein |
+Freigabe durch Sie: „Stufe A komplett“ (scope `all_a`). Status nach Umsetzung in Commit `b799959`:
+
+| # | Maßnahme | Wer | Aufwand | Status |
+|---|---|---|---|---|
+| A1 | P0-1: zwei Step-Namen quoten | Ich (verifiziert) | minimal | **erledigt** (YAML parst, 7 Jobs) |
+| A2 | P0-2: Log des fehlgeschlagenen Schritts sichten, Ursache beheben | Sie (GitHub-UI) + ich | klein–mittel | **offen** – Logs waren nicht abrufbar; bitte Log von Run `34730881743`, Schritt „Web/UI contract“, teilen |
+| A3 | P1-4 bis P1-6: Icons, Service-Worker-Versionierung, relative Pfade | Ich | mittel | **erledigt** (Icons 192/512, `sw.js` v14 netzwerk-zuerst, 29 relative Pfade, Android-Assets synchronisiert) |
+| A4 | P1-1: SKIPs als Fehler oder mindestens sichtbar machen | Ich | klein | **erledigt** als `make test-strict`; `make test` bleibt tolerant |
+| A5 | P1-7: `requirements.txt` und `Cargo.lock` anlegen | Ich | klein | **erledigt** als `requirements-dev.txt` (gepinnt) und zwei `Cargo.lock` (ohne Abhängigkeiten) |
+| A6 | Doku korrigieren (Abschnitt 5) | Ich | klein | **erledigt** für README, Makefile, Inventar; `releases/README.md` und TODO-Kopf weiterhin offen |
+| A7 | P1-10: Watchdog-Heartbeat vom Antwortpfad lösen (Hintergrund-Thread), Fehlalarme im Leerlauf beseitigen | Ich | klein | **erledigt** (25 s Leerlauf: `restarts` 0, vorher 3 je Rolle) |
+
+**Zusätzlich über den Plan hinaus, aus P0-4:** `scripts/build_signed_apk.py` überschreibt ein vorhandenes Zertifikat nicht mehr, wenn der Schlüssel fehlt. Stattdessen Wegwerf-Signatur nach `dist/signed-ephemeral/` mit Warnung. `releases/` bleibt unberührt. Die Tests `signed_apk_test.py` und `dex_builder_test.py` wählen den APK-Pfad entsprechend.
 
 ### Stufe B – Releases mit echten Artefakten (Android, Linux, macOS, Windows, Web)
 
@@ -178,12 +185,35 @@ Echte Hardware-Messungen (USB-Interfaces, BLE-Mikrofone, Latenz), lizenzierte Mo
 
 ---
 
-## 7. Nächste Schritte (Vorschlag)
+## 7. Nächste Schritte
 
-1. **Sie:** Log des Schritts *Web/UI contract* im Run `34730881743` im GitHub-UI ansehen und die Fehlermeldung hier teilen.
-2. **Sie:** Entscheiden, ob der Originalschlüssel für `kaoss-release-cert.pem` noch existiert (B1).
-3. **Ich:** Stufe A umsetzen (A1, A3–A6) auf diesem Branch, mit Commit und Push, und den Gate-Lauf erneut belegen.
-4. **Ich:** Danach Stufe B2/B3 angehen, sobald die Schlüsselfrage geklärt ist.
+1. **Sie (A2):** Log des Schritts *Web/UI contract* im Run `34730881743` im GitHub-UI ansehen und die Fehlermeldung teilen. Ohne Log kann ich die Ursache des roten Main-CI nicht belegen.
+2. **Sie (B1, Schlüssel):** Keystore-Datei zum Release-Cert `android/signing/kaoss-release-cert.pem` als Secret hinterlegen. Befehl: `base64 -w0 <keystore> | gh secret set KAOSS_KEYSTORE_BASE64`. Zusätzlich `KAOSS_KEYSTORE_PASSWORD`, `KAOSS_KEY_ALIAS`, `KAOSS_KEY_PASSWORD` setzen. Danach entferne ich das Fallback-Passwort `android` aus CI und `build.gradle.kts`.
+3. **Ich (nach Ihrer Meldung):** Fallback-Passwort entfernen und den signierten Release-Pfad über den Secret-Lauf belegen.
+4. **Ich:** Stufe B2/B3 (echte Desktop-, Android- und Web-Artefakte) auf diesem Branch angehen. Stufe B5 (Apple-, Windows-Zertifikate) bleibt bei Ihnen.
+5. **Hinweis:** Stufe C (Hardware, Modelle, Lizenzen, Store) liegt außerhalb dieser Sandbox.
+
+## Stand nach Stufe A (Commit `b799959`)
+
+**Verifiziert:**
+
+| Prüfung | Ergebnis |
+|---|---|
+| `make test` (lokal, mit `requirements-dev.txt` in venv) | Exit 0. wasmtime-Gate läuft jetzt real (177 Checks, vorher SKIP). `releases/` unverändert. |
+| Verbleibende Übersprünge lokal | androguard, pocketsphinx, flatc (Kreuzdecodierung), Playwright-Chromium (CDN in der Sandbox gesperrt). |
+| `make test-strict` im frischen Klon | Rot, listet die übersprungenen Gates (gewollt). |
+| Frischer Klon von `origin/arena/5dc65cd7-kaospad` (`b799959`): `test-web-contract`, `test-action-chain-ui`, `test-web-ui-chain` | Grün mit Node 22.22.3 und Node 20.19.0. |
+| UI-Harness (DOM-Stub, relative URLs) | 112 UI-Checks, 23 Chain-Schritte, Limiter sicher. |
+| `app.py` Smoke (Port 8082) | 200 für `/`, `manifest.webmanifest`, `sw.js`, `icons/*.png`, `src/app.js`, `src/dsp-core.js`, `/api/status`, `/api/wasm`, `/rhymes?word=…`, `/devices/status`, `/native-bridge/ports`. |
+| Watchdog im Leerlauf (25 s ohne Anfrage) | Alle 6 Rollen `healthy`, `restarts: 0`. Vorher `degraded` mit `restarts: 3`. |
+| Android-Assets | Synchron mit `web/` (einzige Unterschiede: README, package.json, wasm, wie vorher). |
+
+**Nicht verifiziert (ehrlich benannt):**
+
+- **Playwright-Specs (`make test-ui`)** sind nicht gelaufen, weil Chromium in der Sandbox nicht lädt. Die Pfadumstellung in `app.js` betrifft aber genau diese Spezifikationen. Das Playwright-Job auf `main` war vorher grün. Bitte den CI-Lauf auf dem Branch prüfen.
+- **Ob die Änderungen den roten Main-CI-Schritt „Web/UI contract“ beheben,** ist unbekannt. Lokal war er vor und nach den Änderungen grün, die Logs sind nicht abrufbar (A2).
+- **Keine echten Android-, Desktop- oder Web-Release-Builds** in Stufe A. Das ist Stufe B.
+- **Cargo.lock** wurde nicht mit `cargo` gegengeprüft (Rust ist in der Sandbox nicht installiert).
 
 ---
 
